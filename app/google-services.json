@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "572071296239",
+    "project_id": "noten-database",
+    "storage_bucket": "noten-database.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:572071296239:android:1a284bbd5ada782b26af1a",
+        "android_client_info": {
+          "package_name": "com.example.noten"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSP2bFYFzK8SQAxGommU-qXh92tnGW1-U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
