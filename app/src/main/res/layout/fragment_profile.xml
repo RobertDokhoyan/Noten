@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MyProjectsFragment">
+
+    <!-- Кружок для аватарки -->
+    <ImageView
+        android:id="@+id/avatar_circle"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="20dp"
+        android:src="@drawable/account_circle_24dp_e8eaed_fill0_wght400_grad0_opsz24"
+        android:scaleType="centerCrop" />
+
+    <!-- Кнопка для изменения аватарки -->
+    <Button
+        android:id="@+id/change_avatar_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:drawableTint="@color/gold"
+        android:layout_below="@id/avatar_circle"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="10dp"
+        android:text="@string/change_avatar" />
+
+    <!-- Поле для изменения ника -->
+    <EditText
+        android:id="@+id/edit_nickname"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/change_avatar_button"
+        android:layout_marginTop="20dp"
+        android:layout_marginHorizontal="16dp"
+        android:hint="@string/enter_nickname"
+        android:padding="12dp"
+        android:backgroundTint="@color/light_gray"
+        android:inputType="text" />
+
+    <!-- Кнопка для сохранения ника -->
+    <Button
+        android:id="@+id/save_nickname_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:backgroundTint="@color/gold"
+        android:layout_below="@id/edit_nickname"
+        android:layout_marginTop="10dp"
+        android:layout_centerHorizontal="true"
+        android:text="@string/save_nickname" />
+
+    <!-- Поле для изменения пароля -->
+    <EditText
+        android:id="@+id/edit_password"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/save_nickname_button"
+        android:layout_marginTop="20dp"
+        android:layout_marginHorizontal="16dp"
+        android:hint="@string/enter_new_password"
+        android:padding="12dp"
+        android:backgroundTint="@color/light_gray"
+        android:inputType="textPassword" />
+
+    <!-- Кнопка для сохранения пароля -->
+    <Button
+        android:id="@+id/save_password_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/edit_password"
+        android:layout_marginTop="10dp"
+        android:layout_centerHorizontal="true"
+        android:backgroundTint="@color/gold"
+        android:text="@string/save_password" />
+
+    <!-- Кнопка для выхода -->
+    <Button
+        android:id="@+id/logout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="16dp"
+        android:backgroundTint="@color/light_gold"
+        android:text="@string/logout" />
+
+</RelativeLayout>
