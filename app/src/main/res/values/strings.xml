@@ -23,4 +23,7 @@
     <string name="save_nickname">Save nickname</string>
     <string name="change_avatar">Change avatar</string>
     <string name="enter_nickname">Enter nickname</string>
+    <string name="enter_unique_nickname">Enter unique nickname</string>
+    <string name="confirm_new_password">Confirm new password</string>
+    <string name="enter_old_password">Enter old password</string>
 </resources>
