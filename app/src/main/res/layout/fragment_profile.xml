@@ -102,6 +102,7 @@
         android:layout_below="@id/save_password_button"
         android:layout_marginTop="16dp"
         android:backgroundTint="@color/gold"
+        android:minHeight="48dp"
         android:text="Logout" />
 
 </RelativeLayout>

@@ -4,9 +4,7 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.provider.MediaStore;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -18,12 +16,13 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentResultListener;
 
 import com.bumptech.glide.Glide;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.AuthCredential;
 import com.google.firebase.auth.EmailAuthProvider;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
@@ -34,7 +33,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ProfileFragment extends Fragment {
-
     private ImageView avatarCircle;
     private Button changeAvatarButton, saveNicknameButton, changePasswordButton, logoutButton;
     private EditText editNickname, editOldPassword, editNewPassword, editConfirmNewPassword;
@@ -43,8 +41,6 @@ public class ProfileFragment extends Fragment {
     private DatabaseReference databaseReference;
     private StorageReference storageReference;
     private Uri avatarUri;
-
-    private static final int REQUEST_CODE_GALLERY = 100;
 
     @Nullable
     @Override
@@ -62,8 +58,15 @@ public class ProfileFragment extends Fragment {
 
         initializeViews(view);
         loadUserData();
-
         setButtonListeners();
+
+        // Добавляем слушателя для получения выбранной аватарки из AvatarSelectionFragment
+        getParentFragmentManager().setFragmentResultListener("avatarSelection", this, (requestKey, result) -> {
+            int selectedAvatarResId = result.getInt("selectedAvatar");
+            avatarUri = Uri.parse("android.resource://" + getActivity().getPackageName() + "/" + selectedAvatarResId);
+            Glide.with(this).load(avatarUri).into(avatarCircle);  // Обновляем отображение аватара
+            saveAvatarToDatabase();  // Сохраняем аватарку в базе данных
+        });
 
         return view;
     }
@@ -81,24 +84,18 @@ public class ProfileFragment extends Fragment {
     }
 
     private void setButtonListeners() {
-        changeAvatarButton.setOnClickListener(v -> openGallery());
+        changeAvatarButton.setOnClickListener(v -> navigateToAvatarSelection());
         saveNicknameButton.setOnClickListener(v -> saveNickname());
         changePasswordButton.setOnClickListener(v -> changePassword());
         logoutButton.setOnClickListener(v -> logout());
     }
 
-    private void openGallery() {
-        Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-        startActivityForResult(intent, REQUEST_CODE_GALLERY);
-    }
-
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_CODE_GALLERY && resultCode == getActivity().RESULT_OK && data != null) {
-            avatarUri = data.getData();
-            avatarCircle.setImageURI(avatarUri);
-        }
+    private void navigateToAvatarSelection() {
+        getParentFragmentManager()
+                .beginTransaction()
+                .replace(R.id.fragment_container, new AvatarSelectionFragment())
+                .addToBackStack(null)
+                .commit();
     }
 
     private void saveNickname() {
@@ -132,45 +129,49 @@ public class ProfileFragment extends Fragment {
     }
 
     private void saveToDatabase(String userId, Map<String, Object> userData) {
-        Log.d("ProfileFragment", "UserId: " + userId);  // Логирование userId
-        Log.d("ProfileFragment", "User data: " + userData.toString());  // Логирование данных
-
         databaseReference.child(userId).setValue(userData).addOnCompleteListener(task -> {
             if (task.isSuccessful()) {
                 Toast.makeText(getContext(), "Data saved successfully", Toast.LENGTH_SHORT).show();
             } else {
-                Exception e = task.getException();
-                if (e != null) {
-                    Log.e("ProfileFragment", "Failed to save data: " + e.getMessage());  // Логирование ошибки
-                }
                 Toast.makeText(getContext(), "Failed to save data", Toast.LENGTH_SHORT).show();
             }
         });
     }
 
     private void loadUserData() {
-        FirebaseUser user = mAuth.getCurrentUser();  // Получаем текущего пользователя
-        if (user != null) {  // Проверяем, если пользователь авторизован
+        FirebaseUser user = mAuth.getCurrentUser();
+        if (user != null) {
             databaseReference.child(user.getUid()).get().addOnCompleteListener(task -> {
-                if (task.isSuccessful() && task.getResult().exists()) {  // Если запрос успешен и данные существуют
+                if (task.isSuccessful() && task.getResult().exists()) {
                     DataSnapshot dataSnapshot = task.getResult();
-                    String nickname = dataSnapshot.child("nickname").getValue(String.class);  // Загружаем никнейм
-                    String avatarUrl = dataSnapshot.child("avatarUrl").getValue(String.class);  // Загружаем URL аватара
+                    String nickname = dataSnapshot.child("nickname").getValue(String.class);
+                    String avatarUrl = dataSnapshot.child("avatarUrl").getValue(String.class);
 
                     if (nickname != null) {
-                        editNickname.setText(nickname);  // Устанавливаем значение в EditText
+                        editNickname.setText(nickname);
                     }
                     if (avatarUrl != null && !avatarUrl.isEmpty()) {
-                        Glide.with(this).load(avatarUrl).into(avatarCircle);  // Загружаем аватар через Glide
+                        Glide.with(this).load(avatarUrl).into(avatarCircle);  // Загрузка аватара из базы данных
                     }
-                } else {
-                    Toast.makeText(getContext(), "No data found or failed to load", Toast.LENGTH_SHORT).show();
                 }
             });
-        } else {
-            // Если пользователь не авторизован, показываем сообщение и перенаправляем на экран входа
-            Toast.makeText(getContext(), "User not logged in", Toast.LENGTH_SHORT).show();
-            redirectToLogin();
+        }
+    }
+
+    private void saveAvatarToDatabase() {
+        FirebaseUser user = mAuth.getCurrentUser();
+        if (user != null && avatarUri != null) {
+            String userId = user.getUid();
+            Map<String, Object> userData = new HashMap<>();
+            userData.put("avatarUrl", avatarUri.toString());
+
+            databaseReference.child(userId).updateChildren(userData).addOnCompleteListener(task -> {
+                if (task.isSuccessful()) {
+                    Toast.makeText(getContext(), "Avatar saved successfully", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(getContext(), "Failed to save avatar", Toast.LENGTH_SHORT).show();
+                }
+            });
         }
     }
 
@@ -179,56 +180,38 @@ public class ProfileFragment extends Fragment {
         String newPassword = editNewPassword.getText().toString().trim();
         String confirmNewPassword = editConfirmNewPassword.getText().toString().trim();
 
-        // Проверка на пустые поля
         if (TextUtils.isEmpty(oldPassword) || TextUtils.isEmpty(newPassword) || TextUtils.isEmpty(confirmNewPassword)) {
-            Toast.makeText(getContext(), "Please fill out all fields", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "Please fill all fields", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Проверка, что новый пароль и подтверждение пароля совпадают
         if (!newPassword.equals(confirmNewPassword)) {
-            Toast.makeText(getContext(), "New password and confirmation don't match", Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), "New password and confirm password do not match", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        FirebaseUser user = mAuth.getCurrentUser();
-        if (user == null) {
-            Toast.makeText(getContext(), "User not logged in", Toast.LENGTH_SHORT).show();
-            redirectToLogin();
-            return;
-        }
-
-        // Проверка старого пароля и обновление нового
-        reauthenticateAndUpdatePassword(user, oldPassword, newPassword);
-    }
-
-    private void reauthenticateAndUpdatePassword(FirebaseUser user, String oldPassword, String newPassword) {
-        // Создаем объект EmailAuthProvider для старого пароля
-        AuthCredential credential = EmailAuthProvider.getCredential(user.getEmail(), oldPassword);
-
-        // Переаутентификация с использованием старых учетных данных
-        user.reauthenticate(credential)
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        updatePassword(newPassword);
-                    } else {
-                        Toast.makeText(getContext(), "Old password is incorrect", Toast.LENGTH_SHORT).show();
-                    }
-                });
-    }
-
-    private void updatePassword(String newPassword) {
         FirebaseUser user = mAuth.getCurrentUser();
         if (user != null) {
-            user.updatePassword(newPassword).addOnCompleteListener(task -> {
+            AuthCredential credential = EmailAuthProvider.getCredential(user.getEmail(), oldPassword);
+
+            // Reauthenticate the user
+            user.reauthenticate(credential).addOnCompleteListener(task -> {
                 if (task.isSuccessful()) {
-                    Toast.makeText(getContext(), "Password updated successfully", Toast.LENGTH_SHORT).show();
+                    // If reauthentication is successful, change the password
+                    user.updatePassword(newPassword).addOnCompleteListener(updateTask -> {
+                        if (updateTask.isSuccessful()) {
+                            Toast.makeText(getContext(), "Password updated successfully", Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(getContext(), "Password update failed", Toast.LENGTH_SHORT).show();
+                        }
+                    });
                 } else {
-                    Toast.makeText(getContext(), "Failed to update password", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "Old password is incorrect", Toast.LENGTH_SHORT).show();
                 }
             });
         }
     }
+
 
     private void logout() {
         new AlertDialog.Builder(getContext())
@@ -243,7 +226,6 @@ public class ProfileFragment extends Fragment {
     }
 
     private void redirectToLogin() {
-        Toast.makeText(getContext(), "Redirecting to login", Toast.LENGTH_SHORT).show();
         Intent intent = new Intent(getContext(), Login.class);
         startActivity(intent);
         if (getActivity() != null) getActivity().finish();
