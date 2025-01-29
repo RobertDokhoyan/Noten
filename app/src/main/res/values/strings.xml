@@ -26,4 +26,6 @@
     <string name="enter_unique_nickname">Enter unique nickname</string>
     <string name="confirm_new_password">Confirm new password</string>
     <string name="enter_old_password">Enter old password</string>
+    <string name="detected_note">Detected Note: -</string>
+    <string name="stop_recording">Stop Recording</string>
 </resources>

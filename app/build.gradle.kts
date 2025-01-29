@@ -37,12 +37,20 @@ dependencies {
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
-    implementation(libs.firebase.auth)
+    implementation(libs.firebase.auth) // Firebase Authentication
     implementation(platform("com.google.firebase:firebase-bom:32.1.1")) // Firebase BoM
-    implementation("com.google.firebase:firebase-database")
-    implementation("com.google.firebase:firebase-storage")
+    implementation("com.google.firebase:firebase-database") // Firebase Realtime Database
+    implementation("com.google.firebase:firebase-storage") // Firebase Storage
+
+    // Glide для загрузки изображений
+    implementation ("org.tensorflow:tensorflow-lite:2.7.0")
+    implementation ("org.tensorflow:tensorflow-lite-support:2.7.0")
+    implementation ("org.tensorflow:tensorflow-lite-task-audio:0.3.0")
+
     implementation("com.github.bumptech.glide:glide:4.15.1")
-    annotationProcessor("com.github.bumptech.glide:compiler:4.15.1") // Для Glide
+    implementation(libs.litert.support.api)
+    annotationProcessor("com.github.bumptech.glide:compiler:4.15.1")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)

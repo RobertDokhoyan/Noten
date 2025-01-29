@@ -20,17 +20,15 @@ public class AvatarSelectionFragment extends Fragment {
         View view = inflater.inflate(R.layout.fragment_avatar_selection, container, false);
         avatarGridView = view.findViewById(R.id.avatar_grid_view);
 
-        // Инициализация адаптера с ресурсами аватарок
         avatarAdapter = new AvatarAdapter(getContext(), new int[] {
                 R.drawable.img_4, R.drawable.img_6, R.drawable.img_3,
-                R.drawable.img_7, R.drawable.img_8, R.drawable.img_5
-                // Здесь можно добавить больше аватарок
+                R.drawable.img_7, R.drawable.img_8, R.drawable.img_5,
+                R.drawable.img_9
         });
 
         avatarGridView.setAdapter(avatarAdapter);
 
         avatarGridView.setOnItemClickListener((parent, view1, position, id) -> {
-            // Выбираем аватар по клику
             selectAvatar(position);
         });
 
@@ -38,15 +36,12 @@ public class AvatarSelectionFragment extends Fragment {
     }
 
     private void selectAvatar(int position) {
-        // Получаем URI выбранного аватара
         Uri avatarUri = Uri.parse("android.resource://" + getActivity().getPackageName() + "/" + avatarAdapter.getItem(position));
 
-        // Отправляем результат в ProfileFragment
         Bundle result = new Bundle();
         result.putInt("selectedAvatar", avatarAdapter.getItem(position));
         getParentFragmentManager().setFragmentResult("avatarSelection", result);
 
-        // Возвращаемся к предыдущему экрану
         getParentFragmentManager().popBackStack();
     }
 }

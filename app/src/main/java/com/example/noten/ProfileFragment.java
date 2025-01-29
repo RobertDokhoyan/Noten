@@ -60,7 +60,6 @@ public class ProfileFragment extends Fragment {
         loadUserData();
         setButtonListeners();
 
-        // Добавляем слушателя для получения выбранной аватарки из AvatarSelectionFragment
         getParentFragmentManager().setFragmentResultListener("avatarSelection", this, (requestKey, result) -> {
             int selectedAvatarResId = result.getInt("selectedAvatar");
             avatarUri = Uri.parse("android.resource://" + getActivity().getPackageName() + "/" + selectedAvatarResId);
@@ -194,10 +193,8 @@ public class ProfileFragment extends Fragment {
         if (user != null) {
             AuthCredential credential = EmailAuthProvider.getCredential(user.getEmail(), oldPassword);
 
-            // Reauthenticate the user
             user.reauthenticate(credential).addOnCompleteListener(task -> {
                 if (task.isSuccessful()) {
-                    // If reauthentication is successful, change the password
                     user.updatePassword(newPassword).addOnCompleteListener(updateTask -> {
                         if (updateTask.isSuccessful()) {
                             Toast.makeText(getContext(), "Password updated successfully", Toast.LENGTH_SHORT).show();

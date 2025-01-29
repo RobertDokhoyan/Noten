@@ -1,19 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".MyProjectsFragment">
+    android:orientation="vertical"
+    android:padding="16dp">
 
-    <!-- TODO: Update blank fragment layout -->
     <TextView
+        android:id="@+id/detectedNote"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start recording"
+        android:textSize="18sp"
+        android:gravity="center"
+        android:padding="6dp" />
+
+    <Button
+        android:id="@+id/startButton"
+        android:layout_width="209dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/img_10"
+        android:backgroundTint="@color/gold"
+        android:padding="90dp"
+        android:textColor="@color/gold" />
+
+    <Button
+        android:id="@+id/stopButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text = "@string/recorder_fragment"
-        android:textSize="30sp"
-        android:textColor="@color/light_gold"
-        android:layout_centerInParent="true"
-        android:textStyle="bold"/>
+        android:layout_gravity="center"
+        android:layout_marginTop="8dp"
+        android:padding="15dp"
+        android:text="@string/stop_recording" />
 
-
-</RelativeLayout>
+</LinearLayout>
