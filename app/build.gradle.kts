@@ -41,13 +41,8 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:32.1.1")) // Firebase BoM
     implementation("com.google.firebase:firebase-database") // Firebase Realtime Database
     implementation("com.google.firebase:firebase-storage") // Firebase Storage
-
-    // Glide для загрузки изображений
-    implementation ("org.tensorflow:tensorflow-lite:2.7.0")
-    implementation ("org.tensorflow:tensorflow-lite-support:2.7.0")
-    implementation ("org.tensorflow:tensorflow-lite-task-audio:0.3.0")
-
     implementation("com.github.bumptech.glide:glide:4.15.1")
+    implementation ("com.github.wendykierp:JTransforms:3.1")
     implementation(libs.litert.support.api)
     annotationProcessor("com.github.bumptech.glide:compiler:4.15.1")
 

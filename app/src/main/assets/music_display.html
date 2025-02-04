@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>VexFlow Music Display</title>
+    <!-- Подключаем VexFlow через CDN -->
+    <script src="https://unpkg.com/vexflow/releases/vexflow-min.js"></script>
+    <style>
+        html, body {
+          margin: 0;
+          padding: 0;
+          height: 100%;
+          overflow: hidden;
+        }
+        #vfContainer {
+          width: 100%;
+          height: 100%;
+        }
+    </style>
+</head>
+<body>
+<div id="vfContainer"></div>
+<script>
+    // Инициализация VexFlow
+    var VF = Vex.Flow;
+
+    // Функция отрисовки нотного стана с заданными параметрами тональности и такта.
+    // Параметры:
+    //   key  — строка тональности (например, "C", "G", "F", "Bb" и т.д.)
+    //   meter — размер такта (например, "4/4", "3/4", "6/8")
+    function updateVF(key, meter) {
+      // Очищаем контейнер перед перерисовкой
+      var container = document.getElementById("vfContainer");
+      container.innerHTML = "";
+
+      // Создаем рендерер VexFlow с использованием SVG
+      var renderer = new VF.Renderer(container, VF.Renderer.Backends.SVG);
+      renderer.resize(500, 200);
+      var context = renderer.getContext();
+
+      // Создаем нотный стан (stave)
+      var stave = new VF.Stave(10, 40, 400);
+      // Добавляем ключевой знак, тактовый размер и ключ (тональность)
+      stave.addClef("treble")
+           .addTimeSignature(meter)
+           .addKeySignature(key);
+
+      // Отрисовываем нотный стан
+      stave.setContext(context).draw();
+    }
+
+    // Функция, которую можно вызвать из Android через JavaScript-интерфейс
+    function updateDisplay(key, meter) {
+      updateVF(key, meter);
+    }
+
+    // Начальная отрисовка с параметрами по умолчанию
+    updateDisplay("C", "4/4");
+</script>
+</body>
+</html>
