@@ -9,53 +9,170 @@
         html, body {
           margin: 0;
           padding: 0;
-          height: 100%;
-          overflow: hidden;
+          min-height: 100%;
+          overflow: auto;
+          background-color: #D3D3D3; /* Ярко-серый фон для страницы */
         }
         #vfContainer {
           width: 100%;
-          height: 100%;
+          background-color: #D3D3D3; /* Ярко-серый фон для контейнера */
         }
     </style>
 </head>
 <body>
 <div id="vfContainer"></div>
 <script>
-    // Инициализация VexFlow
     var VF = Vex.Flow;
 
-    // Функция отрисовки нотного стана с заданными параметрами тональности и такта.
-    // Параметры:
-    //   key  — строка тональности (например, "C", "G", "F", "Bb" и т.д.)
-    //   meter — размер такта (например, "4/4", "3/4", "6/8")
-    function updateVF(key, meter) {
-      // Очищаем контейнер перед перерисовкой
+    // Карта accidental для тональностей (без изменений)
+    var keyAccidentalsMap = {
+      "C": {},
+      "G": {"F": "#"},
+      "D": {"F": "#", "C": "#"},
+      "A": {"F": "#", "C": "#", "G": "#"},
+      "E": {"F": "#", "C": "#", "G": "#", "D": "#"},
+      "B": {"F": "#", "C": "#", "G": "#", "D": "#", "A": "#"},
+      "F#": {"F": "#", "C": "#", "G": "#", "D": "#", "A": "#", "E": "#"},
+      "C#": {"F": "#", "C": "#", "G": "#", "D": "#", "A": "#", "E": "#", "B": "#"},
+      "F": {"B": "b"},
+      "Bb": {"B": "b", "E": "b"},
+      "Eb": {"B": "b", "E": "b", "A": "b"},
+      "Ab": {"B": "b", "E": "b", "A": "b", "D": "b"},
+      "Db": {"B": "b", "E": "b", "A": "b", "D": "b", "G": "b"},
+      "Gb": {"B": "b", "E": "b", "A": "b", "D": "b", "G": "b", "C": "b"},
+      "Cb": {"B": "b", "E": "b", "A": "b", "D": "b", "G": "b", "C": "b", "F": "b"}
+    };
+
+    // Массив записанных нот (каждый элемент – строка вида "C4", "F#4" и т.п.)
+    var recordedNotes = [];
+
+    // Преобразует ноту из формата "C4" в формат VexFlow (например, "c/4")
+    function noteToVexKey(note) {
+      var result = note.match(/^([A-Ga-g])([#b]?)(\d)$/);
+      if(result) {
+        return result[1].toLowerCase() + (result[2] ? result[2] : "") + "/" + result[3];
+      }
+      return note;
+    }
+
+    // Отрисовка нотного стана
+    function renderStaff(key, meter) {
       var container = document.getElementById("vfContainer");
       container.innerHTML = "";
 
-      // Создаем рендерер VexFlow с использованием SVG
-      var renderer = new VF.Renderer(container, VF.Renderer.Backends.SVG);
-      renderer.resize(500, 200);
-      var context = renderer.getContext();
+      // Фиксированная ширина канвы (можно заменить на динамическую)
+      var canvasWidth = 500;
+      var startX = 10;
 
-      // Создаем нотный стан (stave)
-      var stave = new VF.Stave(10, 40, 400);
-      // Добавляем ключевой знак, тактовый размер и ключ (тональность)
-      stave.addClef("treble")
-           .addTimeSignature(meter)
-           .addKeySignature(key);
+      // Определяем тактовую дробь
+      var parts = meter.split("/");
+      var beatsPerMeasure = parseInt(parts[0]);
+      var totalMeasures = Math.ceil(recordedNotes.length / beatsPerMeasure);
+      if(totalMeasures === 0) totalMeasures = 1;
 
-      // Отрисовываем нотный стан
-      stave.setContext(context).draw();
+      // Число тактов на строке вычисляется динамически (минимальная ширина такта 120px)
+      var desiredMeasureWidth = 120;
+      var measuresPerRow = Math.floor((canvasWidth - startX) / desiredMeasureWidth);
+      if(measuresPerRow < 1) measuresPerRow = 1;
+      var numRows = Math.ceil(totalMeasures / measuresPerRow);
+      var rowSpacing = 150;
+
+      var rendererSVG = new VF.Renderer(container, VF.Renderer.Backends.SVG);
+      rendererSVG.resize(canvasWidth, numRows * rowSpacing + 50);
+      var ctx = rendererSVG.getContext();
+
+      for (var row = 0; row < numRows; row++) {
+        var startMeasure = row * measuresPerRow;
+        var endMeasure = Math.min(totalMeasures, startMeasure + measuresPerRow);
+        var measuresInRow = endMeasure - startMeasure;
+        var measureWidth = Math.floor((canvasWidth - startX) / measuresInRow);
+        var staveY = 40 + row * rowSpacing;
+        for (var m = startMeasure; m < endMeasure; m++) {
+          var staveX = startX + (m - startMeasure) * measureWidth;
+          var stave = new VF.Stave(staveX, staveY, measureWidth);
+          // НЕ переопределяем стиль стана – линии, ключ и т.д. останутся стандартными (чёрными)
+          if (m === 0) {
+            stave.addClef("treble").addTimeSignature(meter).addKeySignature(key);
+          }
+          if (m === totalMeasures - 1) {
+            stave.setEndBarType(VF.Barline.type.END);
+          } else {
+            stave.setEndBarType(VF.Barline.type.SINGLE);
+          }
+          stave.setContext(ctx).draw();
+          var measureNotes = recordedNotes.slice(m * beatsPerMeasure, (m + 1) * beatsPerMeasure);
+          var notes = [];
+          for (var i = 0; i < measureNotes.length; i++) {
+            var noteStr = measureNotes[i];
+            var vexKey = noteToVexKey(noteStr);
+            var staveNote = new VF.StaveNote({
+              clef: "treble",
+              keys: [vexKey],
+              duration: "q"
+            });
+            // Устанавливаем стиль для нот – чёрный цвет
+            if (staveNote.setStyle) {
+              staveNote.setStyle({ fillStyle: "black", strokeStyle: "black" });
+            }
+            var match = noteStr.match(/^([A-G])([#b]?)(\d)$/);
+            if (match) {
+              var noteLetter = match[1];
+              var noteAcc = match[2];
+              var defaultAcc = "";
+              if (keyAccidentalsMap[key] && keyAccidentalsMap[key][noteLetter]) {
+                defaultAcc = keyAccidentalsMap[key][noteLetter];
+              }
+              if (noteAcc === "#") {
+                staveNote.addAccidental(0, new VF.Accidental("#"));
+              } else if (noteAcc === "b") {
+                staveNote.addAccidental(0, new VF.Accidental("b"));
+              } else if (noteAcc === "" && defaultAcc !== "") {
+                staveNote.addAccidental(0, new VF.Accidental("n"));
+              }
+            }
+            notes.push(staveNote);
+          }
+          // Если в такте меньше нот, добавляем rest‑ноты чёрного цвета
+          while (notes.length < beatsPerMeasure) {
+            var restNote = new VF.StaveNote({
+              clef: "treble",
+              keys: ["b/4"],
+              duration: "qr"
+            });
+            if (restNote.setStyle) {
+              restNote.setStyle({ fillStyle: "black", strokeStyle: "black" });
+            }
+            notes.push(restNote);
+          }
+          var voice = new VF.Voice({ num_beats: beatsPerMeasure, beat_value: 4 });
+          voice.setStrict(false);
+          voice.addTickables(notes);
+          new VF.Formatter().joinVoices([voice]).format([voice], measureWidth - 10);
+          voice.draw(ctx, stave);
+        }
+      }
     }
 
-    // Функция, которую можно вызвать из Android через JavaScript-интерфейс
-    function updateDisplay(key, meter) {
-      updateVF(key, meter);
+    // Функция, вызываемая из Java для обновления нотного стана.
+    // Если параметр note не пустой, добавляем ноту в массив.
+    function updateDisplay(key, meter, note) {
+      console.log("updateDisplay called with:", key, meter, note);
+      if (note && note !== "" && note !== "No note detected") {
+        recordedNotes.push(note);
+        console.log("Added note: " + note + ", total: " + recordedNotes.length);
+      }
+      renderStaff(key, meter);
     }
 
-    // Начальная отрисовка с параметрами по умолчанию
-    updateDisplay("C", "4/4");
+    // Функция сброса нотного стана – очищаем массив записанных нот.
+    function resetStaff(key, meter) {
+      recordedNotes = [];
+      renderStaff(key, meter);
+      console.log("Staff reset, notes cleared.");
+    }
+
+    // Первоначальная отрисовка при загрузке страницы
+    renderStaff("C", "4/4");
 </script>
 </body>
 </html>

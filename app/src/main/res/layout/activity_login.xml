@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/main"
@@ -9,12 +10,14 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".Login">
+
     <ImageView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:background="@drawable/img"
         android:backgroundTint="@color/light_gray"
         android:layout_gravity="center"/>
+
     <TextView
         android:text="@string/login"
         android:textSize="20sp"
@@ -23,10 +26,11 @@
         android:layout_marginBottom="20sp"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"/>
+
+    <!-- Поле ввода Email -->
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
-
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/email"
             android:layout_width="match_parent"
@@ -35,31 +39,65 @@
             tools:ignore="TouchTargetSizeCheck" />
     </com.google.android.material.textfield.TextInputLayout>
 
+    <!-- Поле ввода Password -->
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
-
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/password"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="@string/password"
+            android:inputType="textPassword"
             tools:ignore="TouchTargetSizeCheck" />
     </com.google.android.material.textfield.TextInputLayout>
+
     <ProgressBar
         android:id="@+id/progressBar"
         android:visibility="gone"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"/>
+
+    <!-- Кнопка входа -->
     <Button
         android:id="@+id/btn_login"
         android:text="@string/login"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"/>
+
+    <!-- Кнопка для отправки письма подтверждения (изначально отключена) -->
+    <Button
+        android:id="@+id/btn_send_verification"
+        android:text="Send Verification Email"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:enabled="false"
+        android:layout_marginTop="8sp"/>
+
+    <!-- Кнопка для подтверждения email (изначально отключена) -->
+    <Button
+        android:id="@+id/btn_confirm_verification"
+        android:text="Confirm Verification"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:enabled="false"
+        android:layout_marginTop="8sp"/>
+
+    <!-- Текст для перехода на экран регистрации -->
     <TextView
         android:id="@+id/LoginNow"
         android:gravity="center"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/click_on_register"/>
+        android:text="@string/click_on_register"
+        android:layout_marginTop="8sp"/>
+
+    <!-- Кнопка Guest Mode для входа без аккаунта -->
+    <Button
+        android:id="@+id/btn_guest"
+        android:text="Continue as Guest"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16sp"/>
+
 </LinearLayout>

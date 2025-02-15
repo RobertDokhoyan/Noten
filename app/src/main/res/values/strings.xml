@@ -1,4 +1,11 @@
 <resources>
+    <string name="app_logo">App Logo</string>
+    <string name="about_description">A real-time note recording application with editing capabilities.</string>
+
+    <string name="about_preparation">Before recording, set the key signature, time signature, and clefs.</string>
+    <string name="about_processing">The app records notes in real time and displays them on a musical staff.</string>
+    <string name="about_settings">Edit measures, add pauses, and correct notes where needed.</string>
+    <string name="about_export">Export your sheet music as a JPEG file for easy printing and sharing.</string>
     <string name="app_name">Noten</string>
     <string name="login">Login</string>
     <string name="email">Email</string>
@@ -30,7 +37,9 @@
     <string name="stop_recording">Stop Recording</string>
     <string name="choose_tonality">Choose tonality</string>
     <string name="choose_chord">Choose chord</string>
-        <!-- Массив для ключей -->
+    <string name="detected_notes">Detected Notes</string>
+    <string name="recording_part">Recording Part</string>
+    <!-- Массив для ключей -->
         <string-array name="keys">
             <item>C</item>
             <item>C#</item>

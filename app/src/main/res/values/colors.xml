@@ -7,4 +7,8 @@
     <color name="gold">#E9DE7C</color>
     <color name="light_gold">#F2E56F</color>
     <color name="dark_gold">#D5C003</color>
+    <color name="gold1">#FFD700</color>
+    <color name="light_gold1">#FFEC8B</color>
+    <color name="dark_gold1">#B8860B</color>
+    <color name="dark_background">#121212</color>
 </resources>

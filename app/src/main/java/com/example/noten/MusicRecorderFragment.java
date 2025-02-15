@@ -1,6 +1,8 @@
 package com.example.noten;
 
 import android.Manifest;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
@@ -14,6 +16,7 @@ import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -37,201 +40,24 @@ public class MusicRecorderFragment extends Fragment {
     private TextView noteDisplay;
     private Button startButton, stopButton;
     private AudioRecord audioRecord;
-    private WebView webView;  // WebView для отображения нотного стана с VexFlow
+    private WebView webView; // WebView для отображения нотного стана через VexFlow
 
+    // Переменные для сглаживания и выбранных параметров
     private double smoothedPitch = -1;
     private Spinner keySpinner, meterSpinner;
-    private String selectedKey = "C";    // Значение по умолчанию
-    private String selectedMeter = "4/4";  // Значение по умолчанию
+    private String selectedKey = "C";
+    private String selectedMeter = "4/4";
 
-    @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-        View rootView = inflater.inflate(R.layout.fragment_music_recorder, container, false);
+    // Переменная для предотвращения повторной записи одной и той же ноты
+    private String lastRecordedNote = "";
 
-        noteDisplay = rootView.findViewById(R.id.noteDisplay);
-        startButton = rootView.findViewById(R.id.startButton);
-        stopButton = rootView.findViewById(R.id.stopButton);
-        keySpinner = rootView.findViewById(R.id.keySpinner);
-        meterSpinner = rootView.findViewById(R.id.chordSpinner);
-        webView = rootView.findViewById(R.id.webView);
-
-        // Настройка WebView
-        WebSettings webSettings = webView.getSettings();
-        webSettings.setJavaScriptEnabled(true);
-        // Устанавливаем WebChromeClient для отладки и корректного отображения
-        webView.setWebChromeClient(new WebChromeClient());
-        // Загружаем локальный HTML-файл с VexFlow
-        webView.loadUrl("file:///android_asset/music_display.html");
-
-        startButton.setEnabled(false);
-
-        // Настройка адаптера для спиннера тональности
-        ArrayAdapter<CharSequence> keyAdapter = ArrayAdapter.createFromResource(getActivity(),
-                R.array.keys, android.R.layout.simple_spinner_item);
-        keyAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        keySpinner.setAdapter(keyAdapter);
-
-        // Настройка адаптера для спиннера такта
-        ArrayAdapter<CharSequence> meterAdapter = ArrayAdapter.createFromResource(getActivity(),
-                R.array.meters, android.R.layout.simple_spinner_item);
-        meterAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        meterSpinner.setAdapter(meterAdapter);
-
-        // Обработчик выбора тональности
-        keySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                selectedKey = parent.getItemAtPosition(position).toString();
-                Log.d(TAG, "Selected key: " + selectedKey);
-                updateDisplay();
-            }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) { }
-        });
-
-        // Обработчик выбора такта
-        meterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                selectedMeter = parent.getItemAtPosition(position).toString();
-                Log.d(TAG, "Selected meter: " + selectedMeter);
-                startButton.setEnabled(true);
-                updateDisplay();
-            }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) { }
-        });
-
-        startButton.setOnClickListener(v -> {
-            if (checkPermissions()) {
-                startRecording();
-            } else {
-                requestPermissions();
-            }
-        });
-
-        stopButton.setOnClickListener(v -> stopRecording());
-
-        return rootView;
-    }
-
-    // Вызывает JavaScript-функцию updateDisplay с параметрами тональности и такта
-    private void updateDisplay() {
-        String jsCommand = "javascript:updateDisplay('" + selectedKey + "', '" + selectedMeter + "')";
-        Log.d(TAG, "JS command: " + jsCommand);
-        webView.evaluateJavascript(jsCommand, null);
-    }
-
-    private boolean checkPermissions() {
-        return ActivityCompat.checkSelfPermission(getActivity(), Manifest.permission.RECORD_AUDIO)
-                == PackageManager.PERMISSION_GRANTED;
-    }
-
-    private void requestPermissions() {
-        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, PERMISSION_REQUEST_CODE);
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 &&
-                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startRecording();
-            } else {
-                Toast.makeText(getActivity(), "Permission denied. Cannot record audio.", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    private void startRecording() {
-        try {
-            int minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE,
-                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
-            int bufferSize = Math.max(minBufferSize, AUDIO_BUFFER_SIZE);
-
-            audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE,
-                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize);
-
-            if (audioRecord.getState() == AudioRecord.STATE_INITIALIZED) {
-                audioRecord.startRecording();
-                isRecording = true;
-                smoothedPitch = -1;
-                handler.post(processAudio);
-                Log.d(TAG, "Recording started");
-            } else {
-                Log.e(TAG, "Failed to initialize AudioRecord");
-                Toast.makeText(getActivity(), "Failed to initialize AudioRecord", Toast.LENGTH_SHORT).show();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Exception in startRecording: " + e.getMessage());
-            Toast.makeText(getActivity(), "Error starting recording", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void stopRecording() {
-        if (isRecording && audioRecord != null) {
-            isRecording = false;
-            try {
-                audioRecord.stop();
-            } catch (Exception e) {
-                Log.e(TAG, "Error stopping AudioRecord: " + e.getMessage());
-            }
-            audioRecord.release();
-            Log.d(TAG, "Recording stopped");
-        }
-    }
-
-    private final Runnable processAudio = new Runnable() {
-        @Override
-        public void run() {
-            if (isRecording) {
-                double[] audioData = captureAudio();
-                if (audioData != null && audioData.length > 0) {
-                    double detectedPitch = analyzePitch(audioData);
-                    Log.d(TAG, "Raw detected pitch: " + detectedPitch + " Hz");
-
-                    if (detectedPitch != -1) {
-                        if (smoothedPitch == -1) {
-                            smoothedPitch = detectedPitch;
-                        } else {
-                            smoothedPitch = 0.2 * detectedPitch + 0.8 * smoothedPitch;
-                        }
-                    } else {
-                        smoothedPitch = -1;
-                    }
-
-                    String detectedNote = (smoothedPitch != -1) ? mapFrequencyToNote(smoothedPitch) : "No note detected";
-                    if (!noteDisplay.getText().toString().equals(detectedNote)) {
-                        noteDisplay.setText(detectedNote);
-                    }
-                }
-                handler.postDelayed(this, 200);
-            }
-        }
-    };
-
-    private double[] captureAudio() {
-        short[] buffer = new short[AUDIO_BUFFER_SIZE];
-        double[] audioData = new double[AUDIO_BUFFER_SIZE];
-        int shortsRead = audioRecord.read(buffer, 0, AUDIO_BUFFER_SIZE);
-        if (shortsRead > 0) {
-            for (int i = 0; i < shortsRead; i++) {
-                audioData[i] = buffer[i] / 32768.0;
-            }
-            return audioData;
-        } else {
-            Log.e(TAG, "AudioRecord.read() returned " + shortsRead);
-            return new double[0];
-        }
-    }
-
+    // Алгоритм YIN для монофонического распознавания
     private double analyzePitch(double[] audioData) {
         YINPitchDetector yinDetector = new YINPitchDetector();
         return yinDetector.getPitch(audioData, SAMPLE_RATE);
     }
 
-    // Преобразует частоту в название ноты (диапазон C1–C8)
+    // Преобразование частоты в название ноты (например, "C4")
     private String mapFrequencyToNote(double frequency) {
         double[] noteFrequencies = {
                 32.70, 34.65, 36.71, 38.89, 41.20, 43.65, 46.25, 49.00, 51.91, 55.00, 58.27, 61.74,
@@ -267,6 +93,199 @@ public class MusicRecorderFragment extends Fragment {
         return noteNames[closestIndex];
     }
 
+    // Захват аудио-данных с микрофона
+    private double[] captureAudio() {
+        short[] buffer = new short[AUDIO_BUFFER_SIZE];
+        double[] audioData = new double[AUDIO_BUFFER_SIZE];
+        int shortsRead = audioRecord.read(buffer, 0, AUDIO_BUFFER_SIZE);
+        if (shortsRead > 0) {
+            for (int i = 0; i < shortsRead; i++) {
+                audioData[i] = buffer[i] / 32768.0;
+            }
+            return audioData;
+        } else {
+            Log.e(TAG, "AudioRecord.read() returned " + shortsRead);
+            return new double[0];
+        }
+    }
+
+    // Передача распознанной ноты в HTML через JavaScript
+    private void updateDisplay(String detectedNote) {
+        String jsCommand = "javascript:updateDisplay('" + selectedKey + "', '" + selectedMeter + "', '" + detectedNote + "')";
+        Log.d(TAG, "JS command: " + jsCommand);
+        webView.evaluateJavascript(jsCommand, null);
+    }
+
+    // Обработка аудио каждые 200 мс
+    private final Runnable processAudio = new Runnable() {
+        @Override
+        public void run() {
+            if (isRecording) {
+                double[] audioData = captureAudio();
+                double detectedFreq = analyzePitch(audioData);
+                Log.d(TAG, "Detected frequency: " + detectedFreq + " Hz");
+
+                if (detectedFreq != -1) {
+                    if (smoothedPitch == -1) {
+                        smoothedPitch = detectedFreq;
+                    } else {
+                        smoothedPitch = 0.2 * detectedFreq + 0.8 * smoothedPitch;
+                    }
+                } else {
+                    smoothedPitch = -1;
+                }
+                String detectedNote = (smoothedPitch != -1) ? mapFrequencyToNote(smoothedPitch) : "";
+                if (!detectedNote.isEmpty() && !detectedNote.equals(lastRecordedNote)) {
+                    updateDisplay(detectedNote);
+                    lastRecordedNote = detectedNote;
+                }
+                handler.postDelayed(this, 200);
+            }
+        }
+    };
+
+    private void startRecording() {
+        try {
+            int minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            int bufferSize = Math.max(minBufferSize, AUDIO_BUFFER_SIZE);
+            audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize);
+            if (audioRecord.getState() == AudioRecord.STATE_INITIALIZED) {
+                audioRecord.startRecording();
+                isRecording = true;
+                smoothedPitch = -1;
+                handler.post(processAudio);
+                Log.d(TAG, "Recording started");
+            } else {
+                Log.e(TAG, "AudioRecord initialization error");
+                Toast.makeText(getActivity(), "Error initializing recording", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting recording: " + e.getMessage());
+            Toast.makeText(getActivity(), "Error starting recording", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void stopRecording() {
+        if (isRecording && audioRecord != null) {
+            isRecording = false;
+            try {
+                audioRecord.stop();
+            } catch (Exception e) {
+                Log.e(TAG, "Error stopping recording: " + e.getMessage());
+            }
+            audioRecord.release();
+            Log.d(TAG, "Recording stopped");
+            webView.evaluateJavascript("javascript:resetStaff('" + selectedKey + "', '" + selectedMeter + "')", null);
+        }
+    }
+
+    private boolean checkPermissions() {
+        return ActivityCompat.checkSelfPermission(getActivity(), Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestPermissions() {
+        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, PERMISSION_REQUEST_CODE);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 &&
+                    grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startRecording();
+            } else {
+                Toast.makeText(getActivity(), "No permission to record audio", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    @Override
+    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        View rootView = inflater.inflate(R.layout.fragment_music_recorder, container, false);
+        startButton = rootView.findViewById(R.id.startButton);
+        stopButton = rootView.findViewById(R.id.stopButton);
+        keySpinner = rootView.findViewById(R.id.keySpinner);
+        meterSpinner = rootView.findViewById(R.id.chordSpinner);
+        webView = rootView.findViewById(R.id.webView);
+
+        // Настройка WebView
+        WebSettings webSettings = webView.getSettings();
+        webSettings.setJavaScriptEnabled(true);
+        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                Log.d(TAG, "HTML page loaded: " + url);
+                String initCommand = "javascript:initStave('" + selectedKey + "', '" + selectedMeter + "')";
+                webView.evaluateJavascript(initCommand, null);
+            }
+        });
+        webView.loadUrl("file:///android_asset/music_display.html");
+
+        // Настройка спиннера тональности
+        ArrayAdapter<CharSequence> keyAdapter = ArrayAdapter.createFromResource(getActivity(),
+                R.array.keys, android.R.layout.simple_spinner_item);
+        keyAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        keySpinner.setAdapter(keyAdapter);
+        keySpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                selectedKey = parent.getItemAtPosition(position).toString();
+                Log.d(TAG, "Selected key: " + selectedKey);
+                webView.evaluateJavascript("javascript:updateDisplay('" + selectedKey + "', '" + selectedMeter + "', '')", null);
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) { }
+        });
+
+        // Настройка спиннера такта
+        ArrayAdapter<CharSequence> meterAdapter = ArrayAdapter.createFromResource(getActivity(),
+                R.array.meters, android.R.layout.simple_spinner_item);
+        meterAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        meterSpinner.setAdapter(meterAdapter);
+        meterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                selectedMeter = parent.getItemAtPosition(position).toString();
+                Log.d(TAG, "Selected meter: " + selectedMeter);
+                webView.evaluateJavascript("javascript:updateDisplay('" + selectedKey + "', '" + selectedMeter + "', '')", null);
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) { }
+        });
+
+        // Обработка нажатия кнопки "Запись"
+        startButton.setOnClickListener(v -> {
+            new AlertDialog.Builder(getActivity())
+                    .setTitle("Start Recording")
+                    .setMessage("Do you really want to start recording?")
+                    .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            if (checkPermissions()) {
+                                startRecording();
+                            } else {
+                                requestPermissions();
+                            }
+                        }
+                    })
+                    .setNegativeButton("No", null)
+                    .show();
+        });
+
+        // Обработка нажатия кнопки "Стоп"
+        stopButton.setOnClickListener(v -> {
+            stopRecording();
+        });
+
+        return rootView;
+    }
+
+    // Класс для определения высоты тона методом YIN
     public static class YINPitchDetector {
         private static final double THRESHOLD = 0.15;
 
