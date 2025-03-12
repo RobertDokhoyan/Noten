@@ -4,10 +4,15 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Bitmap.Config;
+import android.graphics.Canvas;
+import android.graphics.pdf.PdfDocument;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -20,6 +25,7 @@ import android.webkit.WebViewClient;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -27,6 +33,10 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 
 public class MusicRecorderFragment extends Fragment {
 
@@ -40,24 +50,24 @@ public class MusicRecorderFragment extends Fragment {
     private TextView noteDisplay;
     private Button startButton, stopButton;
     private AudioRecord audioRecord;
-    private WebView webView; // WebView для отображения нотного стана через VexFlow
+    private WebView webView; // WebView для отображения нот через VexFlow
 
-    // Переменные для сглаживания и выбранных параметров
-    private double smoothedPitch = -1;
+    // Параметры настроек (тональность, такт)
     private Spinner keySpinner, meterSpinner;
     private String selectedKey = "C";
     private String selectedMeter = "4/4";
 
-    // Переменная для предотвращения повторной записи одной и той же ноты
+    // Переменные для определения длительности ноты
     private String lastRecordedNote = "";
+    private long lastNoteStartTime = 0;
 
-    // Алгоритм YIN для монофонического распознавания
+    // Анализ аудио методом YIN
     private double analyzePitch(double[] audioData) {
         YINPitchDetector yinDetector = new YINPitchDetector();
         return yinDetector.getPitch(audioData, SAMPLE_RATE);
     }
 
-    // Преобразование частоты в название ноты (например, "C4")
+    // Преобразование частоты в название ноты
     private String mapFrequencyToNote(double frequency) {
         double[] noteFrequencies = {
                 32.70, 34.65, 36.71, 38.89, 41.20, 43.65, 46.25, 49.00, 51.91, 55.00, 58.27, 61.74,
@@ -93,7 +103,7 @@ public class MusicRecorderFragment extends Fragment {
         return noteNames[closestIndex];
     }
 
-    // Захват аудио-данных с микрофона
+    // Захват аудио с микрофона
     private double[] captureAudio() {
         short[] buffer = new short[AUDIO_BUFFER_SIZE];
         double[] audioData = new double[AUDIO_BUFFER_SIZE];
@@ -109,14 +119,22 @@ public class MusicRecorderFragment extends Fragment {
         }
     }
 
-    // Передача распознанной ноты в HTML через JavaScript
-    private void updateDisplay(String detectedNote) {
-        String jsCommand = "javascript:updateDisplay('" + selectedKey + "', '" + selectedMeter + "', '" + detectedNote + "')";
-        Log.d(TAG, "JS command: " + jsCommand);
-        webView.evaluateJavascript(jsCommand, null);
+    // Метод для сопоставления длительности (в мс) с обозначением длительности ноты для VexFlow.
+    // Конкретные пороги: ≥2000 мс – целая ("w"), ≥1000 мс – четвертная ("q"),
+    // ≥500 мс – восьмая ("8"), иначе – шестнадцатая ("16")
+    private String getDurationSymbol(long durationMs) {
+        if (durationMs >= 2000) {
+            return "w";
+        } else if (durationMs >= 1000) {
+            return "q";
+        } else if (durationMs >= 500) {
+            return "8";
+        } else {
+            return "16";
+        }
     }
 
-    // Обработка аудио каждые 200 мс
+    // Обработка аудио каждые 200 мс с учетом длительности ноты
     private final Runnable processAudio = new Runnable() {
         @Override
         public void run() {
@@ -124,26 +142,31 @@ public class MusicRecorderFragment extends Fragment {
                 double[] audioData = captureAudio();
                 double detectedFreq = analyzePitch(audioData);
                 Log.d(TAG, "Detected frequency: " + detectedFreq + " Hz");
-
+                long currentTime = System.currentTimeMillis();
                 if (detectedFreq != -1) {
-                    if (smoothedPitch == -1) {
-                        smoothedPitch = detectedFreq;
-                    } else {
-                        smoothedPitch = 0.2 * detectedFreq + 0.8 * smoothedPitch;
+                    String detectedNote = mapFrequencyToNote(detectedFreq);
+                    if (lastRecordedNote.isEmpty()) {
+                        // Начинаем новую ноту
+                        lastRecordedNote = detectedNote;
+                        lastNoteStartTime = currentTime;
+                    } else if (!detectedNote.equals(lastRecordedNote)) {
+                        // Нота изменилась – фиксируем длительность предыдущей ноты
+                        long durationMs = currentTime - lastNoteStartTime;
+                        String durationSymbol = getDurationSymbol(durationMs);
+                        String jsCommand = "javascript:updateDisplayWithDuration('"
+                                + selectedKey + "', '" + selectedMeter + "', '"
+                                + lastRecordedNote + "', '" + durationSymbol + "')";
+                        webView.evaluateJavascript(jsCommand, null);
+                        lastRecordedNote = detectedNote;
+                        lastNoteStartTime = currentTime;
                     }
-                } else {
-                    smoothedPitch = -1;
-                }
-                String detectedNote = (smoothedPitch != -1) ? mapFrequencyToNote(smoothedPitch) : "";
-                if (!detectedNote.isEmpty() && !detectedNote.equals(lastRecordedNote)) {
-                    updateDisplay(detectedNote);
-                    lastRecordedNote = detectedNote;
                 }
                 handler.postDelayed(this, 200);
             }
         }
     };
 
+    // Запуск записи аудио
     private void startRecording() {
         try {
             int minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE,
@@ -154,9 +177,12 @@ public class MusicRecorderFragment extends Fragment {
             if (audioRecord.getState() == AudioRecord.STATE_INITIALIZED) {
                 audioRecord.startRecording();
                 isRecording = true;
-                smoothedPitch = -1;
+                // При начале записи очищаем предыдущую нотацию
+                lastRecordedNote = "";
+                lastNoteStartTime = System.currentTimeMillis();
                 handler.post(processAudio);
                 Log.d(TAG, "Recording started");
+                Toast.makeText(getActivity(), "Recording started", Toast.LENGTH_SHORT).show();
             } else {
                 Log.e(TAG, "AudioRecord initialization error");
                 Toast.makeText(getActivity(), "Error initializing recording", Toast.LENGTH_SHORT).show();
@@ -167,9 +193,20 @@ public class MusicRecorderFragment extends Fragment {
         }
     }
 
+    // Остановка записи. Если нота всё ещё звучала – фиксируем её длительность.
     private void stopRecording() {
         if (isRecording && audioRecord != null) {
             isRecording = false;
+            long currentTime = System.currentTimeMillis();
+            if (!lastRecordedNote.isEmpty()) {
+                long durationMs = currentTime - lastNoteStartTime;
+                String durationSymbol = getDurationSymbol(durationMs);
+                String jsCommand = "javascript:updateDisplayWithDuration('"
+                        + selectedKey + "', '" + selectedMeter + "', '"
+                        + lastRecordedNote + "', '" + durationSymbol + "')";
+                webView.evaluateJavascript(jsCommand, null);
+                lastRecordedNote = "";
+            }
             try {
                 audioRecord.stop();
             } catch (Exception e) {
@@ -177,15 +214,131 @@ public class MusicRecorderFragment extends Fragment {
             }
             audioRecord.release();
             Log.d(TAG, "Recording stopped");
-            webView.evaluateJavascript("javascript:resetStaff('" + selectedKey + "', '" + selectedMeter + "')", null);
+            showSaveDialog();
         }
     }
 
+    // Диалог "Save?" с вводом имени проекта.
+    // Если пользователь отменяет сохранение, нотный стан очищается.
+    private void showSaveDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+        builder.setTitle("Save Project?");
+        builder.setMessage("Do you want to save the recorded notes?");
+        final EditText input = new EditText(getActivity());
+        input.setHint("Enter project name");
+        builder.setView(input);
+        builder.setPositiveButton("Save", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                String projectName = input.getText().toString().trim();
+                if (projectName.isEmpty()) {
+                    projectName = "Project_" + System.currentTimeMillis();
+                }
+                saveProject(projectName);
+            }
+        });
+        builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                // Если пользователь отменил сохранение, очищаем нотный стан
+                webView.evaluateJavascript("javascript:resetStaff('" + selectedKey + "', '" + selectedMeter + "')", null);
+            }
+        });
+        builder.show();
+    }
+
+    // Генерация PDF и сохранение изображения, затем создание записи проекта
+    private void saveProject(String projectName) {
+        Bitmap bitmap = captureWebViewBitmap();
+        if (bitmap == null) {
+            Toast.makeText(getActivity(), "Error capturing notes", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String pdfFileName = "notes_" + System.currentTimeMillis() + ".pdf";
+        File pdfFile = savePdfFromBitmap(bitmap, pdfFileName);
+        if (pdfFile == null) {
+            Toast.makeText(getActivity(), "Error saving PDF", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String imageFileName = "notes_image_" + System.currentTimeMillis() + ".png";
+        File imageFile = saveBitmapToFile(bitmap, imageFileName);
+        if (imageFile == null) {
+            Toast.makeText(getActivity(), "Error saving image", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Project project = new Project(projectName, pdfFile.getAbsolutePath(), imageFile.getAbsolutePath());
+        ProjectManager.addProject(project);
+        Toast.makeText(getActivity(), "Project saved", Toast.LENGTH_SHORT).show();
+    }
+
+    // Захват Bitmap из WebView
+    private Bitmap captureWebViewBitmap() {
+        try {
+            Bitmap bitmap = Bitmap.createBitmap(webView.getWidth(), webView.getHeight(), Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            webView.draw(canvas);
+            return bitmap;
+        } catch (Exception e) {
+            Log.e(TAG, "Error capturing WebView bitmap: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // Генерация PDF из Bitmap
+    private File savePdfFromBitmap(Bitmap bitmap, String fileName) {
+        PdfDocument pdfDocument = new PdfDocument();
+        PdfDocument.PageInfo pageInfo = new PdfDocument.PageInfo.Builder(bitmap.getWidth(), bitmap.getHeight(), 1).create();
+        PdfDocument.Page page = pdfDocument.startPage(pageInfo);
+        Canvas pdfCanvas = page.getCanvas();
+        pdfCanvas.drawBitmap(bitmap, 0, 0, null);
+        pdfDocument.finishPage(page);
+        File pdfDir = getActivity().getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS);
+        if (pdfDir != null && !pdfDir.exists()) {
+            pdfDir.mkdirs();
+        }
+        File pdfFile = new File(pdfDir, fileName);
+        try {
+            FileOutputStream fos = new FileOutputStream(pdfFile);
+            pdfDocument.writeTo(fos);
+            fos.close();
+            return pdfFile;
+        } catch (IOException e) {
+            Log.e(TAG, "Error writing PDF file: " + e.getMessage());
+            return null;
+        } finally {
+            pdfDocument.close();
+        }
+    }
+
+    // Сохранение Bitmap в PNG-файл
+    private File saveBitmapToFile(Bitmap bitmap, String fileName) {
+        File imageDir = getActivity().getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        if (imageDir != null && !imageDir.exists()) {
+            imageDir.mkdirs();
+        }
+        File imageFile = new File(imageDir, fileName);
+        try {
+            FileOutputStream fos = new FileOutputStream(imageFile);
+            if (bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)) {
+                fos.close();
+                return imageFile;
+            } else {
+                fos.close();
+                return null;
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error writing image file: " + e.getMessage());
+            return null;
+        }
+    }
+
+    // Проверка разрешения на запись аудио
     private boolean checkPermissions() {
         return ActivityCompat.checkSelfPermission(getActivity(), Manifest.permission.RECORD_AUDIO)
                 == PackageManager.PERMISSION_GRANTED;
     }
 
+    // Запрос разрешений
     private void requestPermissions() {
         requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, PERMISSION_REQUEST_CODE);
     }
@@ -258,19 +411,18 @@ public class MusicRecorderFragment extends Fragment {
             public void onNothingSelected(AdapterView<?> parent) { }
         });
 
-        // Обработка нажатия кнопки "Запись"
+        // Обработка нажатия кнопки "Запись". Перед началом записи происходит сброс нотного стана.
         startButton.setOnClickListener(v -> {
             new AlertDialog.Builder(getActivity())
                     .setTitle("Start Recording")
                     .setMessage("Do you really want to start recording?")
-                    .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            if (checkPermissions()) {
-                                startRecording();
-                            } else {
-                                requestPermissions();
-                            }
+                    .setPositiveButton("Yes", (dialog, which) -> {
+                        // Сброс нотного стана перед началом новой записи
+                        webView.evaluateJavascript("javascript:resetStaff('" + selectedKey + "', '" + selectedMeter + "')", null);
+                        if (checkPermissions()) {
+                            startRecording();
+                        } else {
+                            requestPermissions();
                         }
                     })
                     .setNegativeButton("No", null)
@@ -278,9 +430,7 @@ public class MusicRecorderFragment extends Fragment {
         });
 
         // Обработка нажатия кнопки "Стоп"
-        stopButton.setOnClickListener(v -> {
-            stopRecording();
-        });
+        stopButton.setOnClickListener(v -> stopRecording());
 
         return rootView;
     }
@@ -340,3 +490,4 @@ public class MusicRecorderFragment extends Fragment {
         }
     }
 }
+

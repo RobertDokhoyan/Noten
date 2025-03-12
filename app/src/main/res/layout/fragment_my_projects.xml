@@ -1,19 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".MyProjectsFragment">
+    android:orientation="vertical"
+    android:background="@drawable/golden_gradient"
+    android:padding="0dp">
 
-    <!-- TODO: Update blank fragment layout -->
-    <TextView
-        android:layout_width="wrap_content"
+    <ImageView
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text = "@string/home_fragment"
-        android:textSize="30sp"
-        android:textColor="@color/light_gold"
-        android:layout_centerInParent="true"
-        android:textStyle="bold"/>
+        android:src="@drawable/img_12"
+        android:adjustViewBounds="true"
+        android:elevation="10dp"
+        android:scaleType="fitCenter"
+        android:layout_marginBottom="1dp"/>
 
+    <TextView
+        android:id="@+id/detectedNote"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="My Notes"
+        android:textSize="18sp"
+        android:textColor="@color/gold1"
+        android:gravity="center"
+        android:padding="8dp"
+        android:background="@drawable/listview_border"
+        android:layout_marginBottom="12dp"
+        tools:ignore="HardcodedText" />
 
-</RelativeLayout>
+    <ListView
+        android:id="@+id/listViewProjects"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@drawable/listview_border"
+        android:divider="@color/gold"
+        android:dividerHeight="3dp"
+        android:padding="10dp"
+        android:scrollbarThumbVertical="@drawable/scrollbar_gold"
+        android:fadeScrollbars="false"
+        android:scrollbarSize="10dp"
+        android:scrollbarStyle="outsideOverlay"
+        android:overScrollMode="always"/>
+
+</LinearLayout>
