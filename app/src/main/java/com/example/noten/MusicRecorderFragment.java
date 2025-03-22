@@ -43,7 +43,8 @@ public class MusicRecorderFragment extends Fragment {
     private static final String TAG = "MusicRecorderFragment";
     private static final int PERMISSION_REQUEST_CODE = 1001;
     private static final int SAMPLE_RATE = 44100;
-    private static final int AUDIO_BUFFER_SIZE = 8192;
+    // Используем уменьшенный размер буфера для быстрого отклика
+    private static final int AUDIO_BUFFER_SIZE = 4096;
 
     private boolean isRecording = false;
     private Handler handler = new Handler();
@@ -60,6 +61,8 @@ public class MusicRecorderFragment extends Fragment {
     // Переменные для определения длительности ноты
     private String lastRecordedNote = "";
     private long lastNoteStartTime = 0;
+    // Флаг для фиксации окончания звучания ноты
+    private boolean noteEnded = false;
 
     // Анализ аудио методом YIN
     private double analyzePitch(double[] audioData) {
@@ -120,8 +123,6 @@ public class MusicRecorderFragment extends Fragment {
     }
 
     // Метод для сопоставления длительности (в мс) с обозначением длительности ноты для VexFlow.
-    // Конкретные пороги: ≥2000 мс – целая ("w"), ≥1000 мс – четвертная ("q"),
-    // ≥500 мс – восьмая ("8"), иначе – шестнадцатая ("16")
     private String getDurationSymbol(long durationMs) {
         if (durationMs >= 2000) {
             return "w";
@@ -134,23 +135,34 @@ public class MusicRecorderFragment extends Fragment {
         }
     }
 
-    // Обработка аудио каждые 200 мс с учетом длительности ноты
+    // Обработка аудио каждые 50 мс с дополнительной проверкой по амплитуде
+    // и минимальной длительностью между обновлениями (минимум 100 мс)
     private final Runnable processAudio = new Runnable() {
         @Override
         public void run() {
             if (isRecording) {
                 double[] audioData = captureAudio();
+                // Вычисляем RMS амплитуду
+                double rms = 0;
+                for (double sample : audioData) {
+                    rms += sample * sample;
+                }
+                rms = Math.sqrt(rms / audioData.length);
+                // Если амплитуда слишком мала, считаем, что нота закончилась
+                if (rms < 0.05) {
+                    noteEnded = true;
+                    handler.postDelayed(this, 50);
+                    return;
+                }
                 double detectedFreq = analyzePitch(audioData);
-                Log.d(TAG, "Detected frequency: " + detectedFreq + " Hz");
+                Log.d(TAG, "Detected frequency: " + detectedFreq + " Hz, RMS: " + rms);
                 long currentTime = System.currentTimeMillis();
                 if (detectedFreq != -1) {
                     String detectedNote = mapFrequencyToNote(detectedFreq);
-                    if (lastRecordedNote.isEmpty()) {
-                        // Начинаем новую ноту
-                        lastRecordedNote = detectedNote;
-                        lastNoteStartTime = currentTime;
-                    } else if (!detectedNote.equals(lastRecordedNote)) {
-                        // Нота изменилась – фиксируем длительность предыдущей ноты
+                    // Если первая нота, либо нота закончилась, либо нота изменилась и прошло минимум 100 мс
+                    if (lastRecordedNote.isEmpty() ||
+                            noteEnded ||
+                            (!detectedNote.equals(lastRecordedNote) && (currentTime - lastNoteStartTime) >= 100)) {
                         long durationMs = currentTime - lastNoteStartTime;
                         String durationSymbol = getDurationSymbol(durationMs);
                         String jsCommand = "javascript:updateDisplayWithDuration('"
@@ -159,9 +171,10 @@ public class MusicRecorderFragment extends Fragment {
                         webView.evaluateJavascript(jsCommand, null);
                         lastRecordedNote = detectedNote;
                         lastNoteStartTime = currentTime;
+                        noteEnded = false;
                     }
                 }
-                handler.postDelayed(this, 200);
+                handler.postDelayed(this, 50);
             }
         }
     };
@@ -177,7 +190,6 @@ public class MusicRecorderFragment extends Fragment {
             if (audioRecord.getState() == AudioRecord.STATE_INITIALIZED) {
                 audioRecord.startRecording();
                 isRecording = true;
-                // При начале записи очищаем предыдущую нотацию
                 lastRecordedNote = "";
                 lastNoteStartTime = System.currentTimeMillis();
                 handler.post(processAudio);
@@ -219,7 +231,6 @@ public class MusicRecorderFragment extends Fragment {
     }
 
     // Диалог "Save?" с вводом имени проекта.
-    // Если пользователь отменяет сохранение, нотный стан очищается.
     private void showSaveDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
         builder.setTitle("Save Project?");
@@ -240,7 +251,6 @@ public class MusicRecorderFragment extends Fragment {
         builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
-                // Если пользователь отменил сохранение, очищаем нотный стан
                 webView.evaluateJavascript("javascript:resetStaff('" + selectedKey + "', '" + selectedMeter + "')", null);
             }
         });
@@ -365,9 +375,15 @@ public class MusicRecorderFragment extends Fragment {
         meterSpinner = rootView.findViewById(R.id.chordSpinner);
         webView = rootView.findViewById(R.id.webView);
 
+        // Принудительно используем программный рендеринг для WebView
+        webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+
         // Настройка WebView
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
+        webSettings.setAllowFileAccess(true);
+        webSettings.setAllowContentAccess(true);
+        webSettings.setDomStorageEnabled(true);
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -389,7 +405,7 @@ public class MusicRecorderFragment extends Fragment {
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 selectedKey = parent.getItemAtPosition(position).toString();
                 Log.d(TAG, "Selected key: " + selectedKey);
-                webView.evaluateJavascript("javascript:updateDisplay('" + selectedKey + "', '" + selectedMeter + "', '')", null);
+                webView.evaluateJavascript("javascript:updateDisplayWithDuration('" + selectedKey + "', '" + selectedMeter + "', '', '')", null);
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) { }
@@ -405,19 +421,18 @@ public class MusicRecorderFragment extends Fragment {
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 selectedMeter = parent.getItemAtPosition(position).toString();
                 Log.d(TAG, "Selected meter: " + selectedMeter);
-                webView.evaluateJavascript("javascript:updateDisplay('" + selectedKey + "', '" + selectedMeter + "', '')", null);
+                webView.evaluateJavascript("javascript:updateDisplayWithDuration('" + selectedKey + "', '" + selectedMeter + "', '', '')", null);
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) { }
         });
 
-        // Обработка нажатия кнопки "Запись". Перед началом записи происходит сброс нотного стана.
+        // Обработка нажатия кнопки "Запись"
         startButton.setOnClickListener(v -> {
             new AlertDialog.Builder(getActivity())
                     .setTitle("Start Recording")
                     .setMessage("Do you really want to start recording?")
                     .setPositiveButton("Yes", (dialog, which) -> {
-                        // Сброс нотного стана перед началом новой записи
                         webView.evaluateJavascript("javascript:resetStaff('" + selectedKey + "', '" + selectedMeter + "')", null);
                         if (checkPermissions()) {
                             startRecording();
@@ -437,7 +452,8 @@ public class MusicRecorderFragment extends Fragment {
 
     // Класс для определения высоты тона методом YIN
     public static class YINPitchDetector {
-        private static final double THRESHOLD = 0.15;
+        // Порог уменьшен для быстрого распознавания
+        private static final double THRESHOLD = 0.12;
 
         public double getPitch(double[] buffer, int sampleRate) {
             int bufferSize = buffer.length;
@@ -490,4 +506,3 @@ public class MusicRecorderFragment extends Fragment {
         }
     }
 }
-

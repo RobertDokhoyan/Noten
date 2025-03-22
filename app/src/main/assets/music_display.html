@@ -3,19 +3,28 @@
 <head>
     <meta charset="utf-8">
     <title>VexFlow Music Display</title>
-    <!-- Подключаем VexFlow через CDN -->
-    <script src="https://unpkg.com/vexflow/releases/vexflow-min.js"></script>
+    <!-- Подключаем VexFlow версии 3.0.9 через CDN -->
+    <script src="https://unpkg.com/vexflow@3.0.9/releases/vexflow-min.js"></script>
     <style>
         html, body {
           margin: 0;
           padding: 0;
-          min-height: 100%;
           overflow: auto;
-          background-color: #FFFFFF; /* Белый фон */
+          background-color: #EFEFEF;
+          font-family: 'Arial', sans-serif;
         }
+        /* Фиксированная высота контейнера для нотного стана (WebView) */
         #vfContainer {
           width: 100%;
-          background-color: #FFFFFF; /* Белый фон */
+          height: 500px;  /* фиксированная высота, можно изменить по необходимости */
+          background: linear-gradient(135deg, #f0f0f0, #ffffff);
+          border: 1px solid #ccc;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          padding: 10px;
+          opacity: 0;
+          transition: opacity 0.5s ease-in-out;
+          position: relative;
+          overflow: hidden;
         }
     </style>
 </head>
@@ -24,7 +33,7 @@
 <script>
     var VF = Vex.Flow;
 
-    // Карта accidental для тональностей (без изменений)
+    // Карта accidentals для тональностей
     var keyAccidentalsMap = {
       "C": {},
       "G": {"F": "#"},
@@ -43,63 +52,60 @@
       "Cb": {"B": "b", "E": "b", "A": "b", "D": "b", "G": "b", "C": "b", "F": "b"}
     };
 
-    // Массив записанных нот. Каждая запись – строка в формате "C4:q" или "C4:8" и т.п.
+    // Массив записанных нот (формат "C4:q", "D4:8" и т.п.)
     var recordedNotes = [];
+    var MAX_NOTES = 50;
+    var MIN_MEASURE_WIDTH = 80; // минимальная ширина такта
 
-    // Преобразование ноты в формат VexFlow (например, "C4" -> "c/4")
     function noteToVexKey(note) {
       var result = note.match(/^([A-Ga-g])([#b]?)(\d)$/);
-      if(result) {
+      if (result) {
         return result[1].toLowerCase() + (result[2] ? result[2] : "") + "/" + result[3];
       }
       return note;
     }
 
-    // Функция отрисовки нотного стана, динамически определяет ширину контейнера и
-    // рассчитывает, сколько тактов помещается в одной строке. Максимальное число строк ограничено 5.
+    // Функция отрисовки нотного стана с динамическим масштабированием по высоте и сохранением горизонтальных интервалов
     function renderStaff(key, meter) {
       var container = document.getElementById("vfContainer");
       container.innerHTML = "";
 
-      // Используем динамическую ширину контейнера (если не определено, по умолчанию 500)
-      var canvasWidth = container.offsetWidth || 500;
+      // Фиксированная высота контейнера (500px)
+      var containerWidth = container.offsetWidth;
+      var containerHeight = container.clientHeight; // 500px
       var startX = 10;
-
       var parts = meter.split("/");
       var beatsPerMeasure = parseInt(parts[0]);
 
-      var totalMeasures;
-      if(recordedNotes.length === 0) {
-          // Если нот нет, отображаем 5 пустых мер (по одной на строку)
-          totalMeasures = 5;
-      } else {
-          totalMeasures = Math.ceil(recordedNotes.length / beatsPerMeasure);
-          if(totalMeasures === 0) totalMeasures = 1;
-      }
+      // Если нот нет, отображаем 5 пустых мер; иначе рассчитываем число мер
+      var totalMeasures = (recordedNotes.length === 0) ? 5 : Math.ceil(recordedNotes.length / beatsPerMeasure);
+      if (totalMeasures === 0) totalMeasures = 1;
 
-      // Задаем желаемую ширину одного такта
       var desiredMeasureWidth = 120;
-      // Вычисляем сколько тактов поместится в одну строку
-      var measuresPerRow = Math.floor((canvasWidth - startX) / desiredMeasureWidth);
-      if(measuresPerRow < 1) measuresPerRow = 1;
-
-      // Количество строк определяется как общее число мер деленное на такты в строке, но максимум 5 строк
+      var measuresPerRow = Math.floor((containerWidth - startX) / desiredMeasureWidth);
+      if (measuresPerRow < 1) measuresPerRow = 1;
       var numRows = Math.ceil(totalMeasures / measuresPerRow);
-      numRows = Math.min(numRows, 5);
 
-      var rowSpacing = 150;
+      // Рассчитываем rowSpacing так, чтобы базовая высота (без масштабирования) равнялась:
+      var rowSpacing = (containerHeight - 50) / numRows; // 50 пикселей для отступа сверху
+      var canvasHeight = numRows * rowSpacing + 50;
+
+      // Создаем SVG-рендерер
       var rendererSVG = new VF.Renderer(container, VF.Renderer.Backends.SVG);
-      rendererSVG.resize(canvasWidth, numRows * rowSpacing + 50);
+      rendererSVG.resize(containerWidth, canvasHeight);
       var ctx = rendererSVG.getContext();
 
+      // Рендер каждой строки
       for (var row = 0; row < numRows; row++) {
-        var startMeasure = row * measuresPerRow;
-        var endMeasure = Math.min(totalMeasures, startMeasure + measuresPerRow);
-        var measuresInRow = endMeasure - startMeasure;
-        var measureWidth = Math.floor((canvasWidth - startX) / measuresInRow);
+        var startMeasureIndex = row * measuresPerRow;
+        var endMeasureIndex = Math.min(totalMeasures, startMeasureIndex + measuresPerRow);
+        var measuresInRow = endMeasureIndex - startMeasureIndex;
+        // Рассчитываем ширину такта с учетом MIN_MEASURE_WIDTH
+        var computedMeasureWidth = Math.floor((containerWidth - startX) / measuresInRow);
+        var measureWidth = Math.max(computedMeasureWidth, MIN_MEASURE_WIDTH);
         var staveY = 40 + row * rowSpacing;
-        for (var m = startMeasure; m < endMeasure; m++) {
-          var staveX = startX + (m - startMeasure) * measureWidth;
+        for (var m = startMeasureIndex; m < endMeasureIndex; m++) {
+          var staveX = startX + (m - startMeasureIndex) * measureWidth;
           var stave = new VF.Stave(staveX, staveY, measureWidth);
           if (m === 0) {
             stave.addClef("treble").addTimeSignature(meter).addKeySignature(key);
@@ -111,12 +117,10 @@
           }
           stave.setContext(ctx).draw();
 
-          // Получаем ноты для текущего такта
           var measureNotes = recordedNotes.slice(m * beatsPerMeasure, (m + 1) * beatsPerMeasure);
           var notes = [];
           for (var i = 0; i < measureNotes.length; i++) {
             var noteStr = measureNotes[i];
-            // Разбиваем строку по разделителю ":" – первая часть: нота, вторая: длительность
             var parts = noteStr.split(":");
             var pitch = parts[0];
             var dur = (parts.length > 1) ? parts[1] : "q";
@@ -126,9 +130,12 @@
               keys: [vexKey],
               duration: dur
             });
-            if (staveNote.setStyle) {
-              staveNote.setStyle({ fillStyle: "black", strokeStyle: "black" });
-            }
+            staveNote.setStyle({
+              fillStyle: "#8B7500",
+              strokeStyle: "#8B7500",
+              shadowBlur: 4,
+              shadowColor: "rgba(0, 0, 0, 0.3)"
+            });
             var match = pitch.match(/^([A-G])([#b]?)(\d)$/);
             if (match) {
               var noteLetter = match[1];
@@ -147,16 +154,16 @@
             }
             notes.push(staveNote);
           }
-          // Если в такте меньше нот, добавляем rest‑ноты
           while (notes.length < beatsPerMeasure) {
             var restNote = new VF.StaveNote({
               clef: "treble",
               keys: ["b/4"],
               duration: "qr"
             });
-            if (restNote.setStyle) {
-              restNote.setStyle({ fillStyle: "black", strokeStyle: "black" });
-            }
+            restNote.setStyle({
+              fillStyle: "#555",
+              strokeStyle: "#555"
+            });
             notes.push(restNote);
           }
           var voice = new VF.Voice({ num_beats: beatsPerMeasure, beat_value: 4 });
@@ -166,12 +173,36 @@
           voice.draw(ctx, stave);
         }
       }
+
+      // Настройка viewBox и масштабирование SVG по вертикали, если canvasHeight больше, чем containerHeight
+      var svg = container.querySelector("svg");
+      if (svg) {
+        svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        svg.setAttribute("viewBox", "0 0 " + containerWidth + " " + canvasHeight);
+        svg.style.width = "100%";
+        svg.style.height = "100%";
+        if (canvasHeight > containerHeight) {
+          var scaleFactor = containerHeight / canvasHeight;
+          svg.style.transform = "scale(" + scaleFactor + ")";
+          svg.style.transformOrigin = "top left";
+        }
+      }
+
+      container.style.opacity = 1;
     }
 
-    // Функция, вызываемая из Java для добавления ноты с длительностью
+    // Функция, вызываемая из Android для добавления ноты
     function updateDisplayWithDuration(key, meter, note, dur) {
       console.log("updateDisplayWithDuration called with:", key, meter, note, dur);
-      recordedNotes.push(note + ":" + dur);
+      if (note && dur) {
+        var beats = parseInt(meter.split("/")[0]);
+        if (recordedNotes.length >= MAX_NOTES) {
+          for (var i = 0; i < beats; i++) {
+            recordedNotes.shift();
+          }
+        }
+        recordedNotes.push(note + ":" + dur);
+      }
       renderStaff(key, meter);
     }
 
@@ -180,6 +211,11 @@
       recordedNotes = [];
       renderStaff(key, meter);
       console.log("Staff reset, notes cleared.");
+    }
+
+    // Функция инициализации нотного стана, вызываемая из Android
+    function initStave(key, meter) {
+      renderStaff(key, meter);
     }
 
     // Первоначальная отрисовка при загрузке страницы
