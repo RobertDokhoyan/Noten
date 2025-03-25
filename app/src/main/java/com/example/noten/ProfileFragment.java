@@ -23,7 +23,6 @@ import com.google.firebase.auth.AuthCredential;
 import com.google.firebase.auth.EmailAuthProvider;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.storage.FirebaseStorage;
@@ -34,7 +33,7 @@ import java.util.Map;
 
 public class ProfileFragment extends Fragment {
     private ImageView avatarCircle;
-    private Button changeAvatarButton, saveNicknameButton, changePasswordButton, logoutButton;
+    private Button changeAvatarButton, saveNicknameButton, changePasswordButton, logoutButton, deleteAccountButton;
     private EditText editNickname, editOldPassword, editNewPassword, editConfirmNewPassword;
 
     private FirebaseAuth mAuth;
@@ -44,7 +43,8 @@ public class ProfileFragment extends Fragment {
 
     @Nullable
     @Override
-    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+                             @Nullable Bundle savedInstanceState) {
         mAuth = FirebaseAuth.getInstance();
         databaseReference = FirebaseDatabase.getInstance().getReference("Users");
         storageReference = FirebaseStorage.getInstance().getReference("Avatars");
@@ -60,11 +60,14 @@ public class ProfileFragment extends Fragment {
         loadUserData();
         setButtonListeners();
 
-        getParentFragmentManager().setFragmentResultListener("avatarSelection", this, (requestKey, result) -> {
-            int selectedAvatarResId = result.getInt("selectedAvatar");
-            avatarUri = Uri.parse("android.resource://" + getActivity().getPackageName() + "/" + selectedAvatarResId);
-            Glide.with(this).load(avatarUri).into(avatarCircle);  // Обновляем отображение аватара
-            saveAvatarToDatabase();  // Сохраняем аватарку в базе данных
+        getParentFragmentManager().setFragmentResultListener("avatarSelection", this, new FragmentResultListener() {
+            @Override
+            public void onFragmentResult(@NonNull String requestKey, @NonNull Bundle result) {
+                int selectedAvatarResId = result.getInt("selectedAvatar");
+                avatarUri = Uri.parse("android.resource://" + getActivity().getPackageName() + "/" + selectedAvatarResId);
+                Glide.with(ProfileFragment.this).load(avatarUri).into(avatarCircle);  // Обновляем отображение аватара
+                saveAvatarToDatabase();  // Сохраняем аватарку в базе данных
+            }
         });
 
         return view;
@@ -76,6 +79,7 @@ public class ProfileFragment extends Fragment {
         saveNicknameButton = view.findViewById(R.id.save_nickname_button);
         changePasswordButton = view.findViewById(R.id.save_password_button);
         logoutButton = view.findViewById(R.id.logout);
+        deleteAccountButton = view.findViewById(R.id.delete_account_button); // Новая кнопка
         editNickname = view.findViewById(R.id.edit_nickname);
         editOldPassword = view.findViewById(R.id.edit_old_password);
         editNewPassword = view.findViewById(R.id.edit_new_password);
@@ -87,6 +91,33 @@ public class ProfileFragment extends Fragment {
         saveNicknameButton.setOnClickListener(v -> saveNickname());
         changePasswordButton.setOnClickListener(v -> changePassword());
         logoutButton.setOnClickListener(v -> logout());
+
+        // Обработчик для удаления аккаунта
+        deleteAccountButton.setOnClickListener(v -> {
+            new AlertDialog.Builder(getContext())
+                    .setTitle("Delete Account")
+                    .setMessage("Are you sure you want to delete your account? This action cannot be undone.")
+                    .setPositiveButton("Yes", (dialog, which) -> {
+                        FirebaseUser user = mAuth.getCurrentUser();
+                        if (user != null) {
+                            user.delete().addOnCompleteListener(task -> {
+                                if (task.isSuccessful()) {
+                                    Toast.makeText(getContext(), "Account deleted successfully", Toast.LENGTH_SHORT).show();
+                                    // Перенаправляем пользователя в меню регистрации
+                                    Intent intent = new Intent(getContext(), Register.class);
+                                    startActivity(intent);
+                                    if (getActivity() != null) {
+                                        getActivity().finish();
+                                    }
+                                } else {
+                                    Toast.makeText(getContext(), "Failed to delete account. Please reauthenticate.", Toast.LENGTH_SHORT).show();
+                                }
+                            });
+                        }
+                    })
+                    .setNegativeButton("No", null)
+                    .show();
+        });
     }
 
     private void navigateToAvatarSelection() {
@@ -121,10 +152,14 @@ public class ProfileFragment extends Fragment {
 
     private void uploadAvatarAndSaveData(String userId, Map<String, Object> userData) {
         StorageReference avatarRef = storageReference.child(userId + ".jpg");
-        avatarRef.putFile(avatarUri).addOnSuccessListener(taskSnapshot -> avatarRef.getDownloadUrl().addOnSuccessListener(uri -> {
-            userData.put("avatarUrl", uri.toString());
-            saveToDatabase(userId, userData);
-        })).addOnFailureListener(e -> Toast.makeText(getContext(), "Failed to upload avatar", Toast.LENGTH_SHORT).show());
+        avatarRef.putFile(avatarUri).addOnSuccessListener(taskSnapshot ->
+                avatarRef.getDownloadUrl().addOnSuccessListener(uri -> {
+                    userData.put("avatarUrl", uri.toString());
+                    saveToDatabase(userId, userData);
+                })
+        ).addOnFailureListener(e ->
+                Toast.makeText(getContext(), "Failed to upload avatar", Toast.LENGTH_SHORT).show()
+        );
     }
 
     private void saveToDatabase(String userId, Map<String, Object> userData) {
@@ -142,15 +177,14 @@ public class ProfileFragment extends Fragment {
         if (user != null) {
             databaseReference.child(user.getUid()).get().addOnCompleteListener(task -> {
                 if (task.isSuccessful() && task.getResult().exists()) {
-                    DataSnapshot dataSnapshot = task.getResult();
-                    String nickname = dataSnapshot.child("nickname").getValue(String.class);
-                    String avatarUrl = dataSnapshot.child("avatarUrl").getValue(String.class);
+                    String nickname = task.getResult().child("nickname").getValue(String.class);
+                    String avatarUrl = task.getResult().child("avatarUrl").getValue(String.class);
 
                     if (nickname != null) {
                         editNickname.setText(nickname);
                     }
                     if (avatarUrl != null && !avatarUrl.isEmpty()) {
-                        Glide.with(this).load(avatarUrl).into(avatarCircle);  // Загрузка аватара из базы данных
+                        Glide.with(this).load(avatarUrl).into(avatarCircle);
                     }
                 }
             });
@@ -192,7 +226,6 @@ public class ProfileFragment extends Fragment {
         FirebaseUser user = mAuth.getCurrentUser();
         if (user != null) {
             AuthCredential credential = EmailAuthProvider.getCredential(user.getEmail(), oldPassword);
-
             user.reauthenticate(credential).addOnCompleteListener(task -> {
                 if (task.isSuccessful()) {
                     user.updatePassword(newPassword).addOnCompleteListener(updateTask -> {
@@ -209,7 +242,6 @@ public class ProfileFragment extends Fragment {
         }
     }
 
-
     private void logout() {
         new AlertDialog.Builder(getContext())
                 .setTitle("Logout")
@@ -225,6 +257,8 @@ public class ProfileFragment extends Fragment {
     private void redirectToLogin() {
         Intent intent = new Intent(getContext(), Login.class);
         startActivity(intent);
-        if (getActivity() != null) getActivity().finish();
+        if (getActivity() != null) {
+            getActivity().finish();
+        }
     }
 }

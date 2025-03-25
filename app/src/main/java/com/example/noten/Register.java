@@ -22,7 +22,7 @@ import com.google.firebase.auth.FirebaseUser;
 
 public class Register extends AppCompatActivity {
     TextInputEditText editTextEmail, editTextPassword, editTextConfirmPassword;
-    Button buttonRegister, buttonSendVerification, buttonGuest;
+    Button btnSendVerification, btnRegister, btnGuest;
     FirebaseAuth mAuth;
     ProgressBar progressBar;
     TextView textViewLogin;
@@ -38,14 +38,18 @@ public class Register extends AppCompatActivity {
         editTextEmail = findViewById(R.id.email);
         editTextPassword = findViewById(R.id.password);
         editTextConfirmPassword = findViewById(R.id.confirm_password);
-        buttonRegister = findViewById(R.id.btn_register);
-        buttonSendVerification = findViewById(R.id.btn_send_verification);
+        btnSendVerification = findViewById(R.id.btn_send_verification);
+        btnRegister = findViewById(R.id.btn_register);
+        btnGuest = findViewById(R.id.btn_guest);
         progressBar = findViewById(R.id.progressBar);
         textViewLogin = findViewById(R.id.RegisterNow);
-        buttonGuest = findViewById(R.id.btn_guest);
 
-        // Обработка регистрации нового пользователя
-        buttonRegister.setOnClickListener(new View.OnClickListener() {
+        // По умолчанию делаем кнопку входа (btn_register) неактивной,
+        // так как аккаунт ещё не подтверждён.
+        btnRegister.setEnabled(false);
+
+        // Обработчик для отправки письма верификации и регистрации аккаунта
+        btnSendVerification.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 progressBar.setVisibility(View.VISIBLE);
@@ -69,66 +73,85 @@ public class Register extends AppCompatActivity {
                     return;
                 }
 
+                // Создаём пользователя
                 mAuth.createUserWithEmailAndPassword(email, password)
-                        .addOnCompleteListener(new OnCompleteListener<AuthResult>() {
+                        .addOnCompleteListener(Register.this, new OnCompleteListener<AuthResult>() {
                             @Override
                             public void onComplete(@NonNull Task<AuthResult> task) {
                                 progressBar.setVisibility(View.GONE);
                                 if (task.isSuccessful()) {
-                                    Toast.makeText(getApplicationContext(), "Registration Successful", Toast.LENGTH_SHORT).show();
                                     currentUser = mAuth.getCurrentUser();
                                     if (currentUser != null) {
-                                        // Активируем кнопку отправки письма подтверждения
-                                        buttonSendVerification.setEnabled(true);
+                                        // Отправляем письмо верификации
+                                        currentUser.sendEmailVerification()
+                                                .addOnCompleteListener(Register.this, new OnCompleteListener<Void>() {
+                                                    @Override
+                                                    public void onComplete(@NonNull Task<Void> task) {
+                                                        if (task.isSuccessful()) {
+                                                            Toast.makeText(getApplicationContext(),
+                                                                    "Verification email sent. Check your inbox.",
+                                                                    Toast.LENGTH_SHORT).show();
+                                                            // Деактивируем кнопку отправки письма,
+                                                            // так как оно уже отправлено
+                                                            btnSendVerification.setEnabled(false);
+                                                            // Активируем кнопку входа, чтобы пользователь мог войти после верификации
+                                                            btnRegister.setEnabled(true);
+                                                        } else {
+                                                            String errorMsg = task.getException() != null ?
+                                                                    task.getException().getMessage() : "Failed to send verification email.";
+                                                            Toast.makeText(Register.this, errorMsg, Toast.LENGTH_SHORT).show();
+                                                        }
+                                                    }
+                                                });
                                     }
                                 } else {
-                                    Toast.makeText(Register.this, "Registration Failed", Toast.LENGTH_SHORT).show();
+                                    String errorMsg = task.getException() != null ?
+                                            task.getException().getMessage() : "Registration Failed";
+                                    Toast.makeText(Register.this, errorMsg, Toast.LENGTH_SHORT).show();
                                 }
                             }
                         });
             }
         });
 
-        // Обработчик для отправки письма подтверждения
-        buttonSendVerification.setOnClickListener(new View.OnClickListener() {
+        // Обработчик для входа в аккаунт (проверка подтверждения email)
+        btnRegister.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 if (currentUser != null) {
-                    currentUser.sendEmailVerification()
-                            .addOnCompleteListener(new OnCompleteListener<Void>() {
-                                @Override
-                                public void onComplete(@NonNull Task<Void> task) {
-                                    if (task.isSuccessful()) {
-                                        Toast.makeText(getApplicationContext(), "Verification email sent. Check your inbox.", Toast.LENGTH_SHORT).show();
-                                        // Опционально: можно деактивировать кнопку после отправки
-                                        buttonSendVerification.setEnabled(false);
-                                    } else {
-                                        Toast.makeText(Register.this, "Failed to send verification email.", Toast.LENGTH_SHORT).show();
-                                    }
-                                }
-                            });
+                    // Обновляем данные пользователя
+                    currentUser.reload().addOnCompleteListener(new OnCompleteListener<Void>() {
+                        @Override
+                        public void onComplete(@NonNull Task<Void> task) {
+                            if (currentUser.isEmailVerified()) {
+                                Toast.makeText(Register.this, "Email verified! Logging in.", Toast.LENGTH_SHORT).show();
+                                startActivity(new Intent(getApplicationContext(), MainActivity.class));
+                                finish();
+                            } else {
+                                Toast.makeText(Register.this, "Email not verified yet. Please verify your email.", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                    });
                 } else {
-                    Toast.makeText(Register.this, "User not registered yet.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(Register.this, "Please register first.", Toast.LENGTH_SHORT).show();
                 }
             }
         });
 
-        // Переход к экрану входа
+        // Переход к экрану входа (Login)
         textViewLogin.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Intent intent = new Intent(getApplicationContext(), Login.class);
-                startActivity(intent);
+                startActivity(new Intent(getApplicationContext(), Login.class));
                 finish();
             }
         });
 
-        // Обработчик для входа без аккаунта (Guest Mode)
-        buttonGuest.setOnClickListener(new View.OnClickListener() {
+        // Обработчик для входа в режиме Guest (без аккаунта)
+        btnGuest.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Intent intent = new Intent(getApplicationContext(), MainActivity.class);
-                startActivity(intent);
+                startActivity(new Intent(getApplicationContext(), MainActivity.class));
                 finish();
             }
         });
