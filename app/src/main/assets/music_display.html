@@ -52,7 +52,7 @@
       "Cb": {"B": "b", "E": "b", "A": "b", "D": "b", "G": "b", "C": "b", "F": "b"}
     };
 
-    // Массив записанных нот (формат "C4:q", "D4:8" и т.п.)
+    // Массив записанных нот (формат "C4:q", "C4,E4:q", "D4:8" и т.п.)
     var recordedNotes = [];
     var MAX_NOTES = 50;
     var MIN_MEASURE_WIDTH = 80; // минимальная ширина такта
@@ -122,38 +122,52 @@
           for (var i = 0; i < measureNotes.length; i++) {
             var noteStr = measureNotes[i];
             var parts = noteStr.split(":");
-            var pitch = parts[0];
+            var pitchInput = parts[0]; // Может быть одна нота или список нот через запятую
             var dur = (parts.length > 1) ? parts[1] : "q";
-            var vexKey = noteToVexKey(pitch);
+
+            // Разбиваем входную строку по запятым
+            var pitches = pitchInput.split(",").map(function(n) { return n.trim(); });
+            // Преобразуем каждую ноту в формат VexFlow (например, "C4" -> "c/4")
+            var vexKeys = pitches.map(noteToVexKey);
+
+            // Создаем ноту/аккорд
             var staveNote = new VF.StaveNote({
               clef: "treble",
-              keys: [vexKey],
+              keys: vexKeys,
               duration: dur
             });
+
+            // Устанавливаем стиль для ноты/аккорда
             staveNote.setStyle({
               fillStyle: "#8B7500",
               strokeStyle: "#8B7500",
               shadowBlur: 4,
               shadowColor: "rgba(0, 0, 0, 0.3)"
             });
-            var match = pitch.match(/^([A-G])([#b]?)(\d)$/);
-            if (match) {
-              var noteLetter = match[1];
-              var noteAcc = match[2];
-              var defaultAcc = "";
-              if (keyAccidentalsMap[key] && keyAccidentalsMap[key][noteLetter]) {
-                defaultAcc = keyAccidentalsMap[key][noteLetter];
-              }
-              if (noteAcc === "#") {
-                staveNote.addAccidental(0, new VF.Accidental("#"));
-              } else if (noteAcc === "b") {
-                staveNote.addAccidental(0, new VF.Accidental("b"));
-              } else if (noteAcc === "" && defaultAcc !== "") {
-                staveNote.addAccidental(0, new VF.Accidental("n"));
+
+            // Для каждой ноты в аккорде добавляем accidental, если требуется
+            for (var j = 0; j < pitches.length; j++) {
+              var pitch = pitches[j];
+              var match = pitch.match(/^([A-G])([#b]?)(\d)$/);
+              if (match) {
+                var noteLetter = match[1];
+                var noteAcc = match[2];
+                var defaultAcc = "";
+                if (keyAccidentalsMap[key] && keyAccidentalsMap[key][noteLetter]) {
+                  defaultAcc = keyAccidentalsMap[key][noteLetter];
+                }
+                if (noteAcc === "#") {
+                  staveNote.addAccidental(j, new VF.Accidental("#"));
+                } else if (noteAcc === "b") {
+                  staveNote.addAccidental(j, new VF.Accidental("b"));
+                } else if (noteAcc === "" && defaultAcc !== "") {
+                  staveNote.addAccidental(j, new VF.Accidental("n"));
+                }
               }
             }
             notes.push(staveNote);
           }
+          // Если нот меньше, чем количество долей в такте, добавляем rest-ноты
           while (notes.length < beatsPerMeasure) {
             var restNote = new VF.StaveNote({
               clef: "treble",
@@ -191,7 +205,7 @@
       container.style.opacity = 1;
     }
 
-    // Функция, вызываемая из Android для добавления ноты
+    // Функция, вызываемая из Android для добавления ноты/аккорда
     function updateDisplayWithDuration(key, meter, note, dur) {
       console.log("updateDisplayWithDuration called with:", key, meter, note, dur);
       if (note && dur) {
@@ -201,6 +215,7 @@
             recordedNotes.shift();
           }
         }
+        // Записываем входную строку, где note может содержать несколько нот через запятую
         recordedNotes.push(note + ":" + dur);
       }
       renderStaff(key, meter);

@@ -37,21 +37,20 @@ import androidx.fragment.app.Fragment;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.Arrays;
 
 public class MusicRecorderFragment extends Fragment {
 
     private static final String TAG = "MusicRecorderFragment";
     private static final int PERMISSION_REQUEST_CODE = 1001;
     private static final int SAMPLE_RATE = 44100;
-    // Размер буфера для быстрого отклика
+    // Используем уменьшенный размер буфера для быстрого отклика
     private static final int AUDIO_BUFFER_SIZE = 4096;
-    // Задержка между итерациями – для быстрой игры установлена в 20 мс
-    private static final int PROCESS_DELAY_MS = 20;
-    // Минимальное время для фиксации изменения ноты (в мс)
-    private static final int MIN_NOTE_DURATION_MS = 100;
-    // Допустимая относительная погрешность (5%) для определения, что нота не изменилась
-    private static final double FREQUENCY_TOLERANCE = 0.05;
+
+    // Пороговые значения для проверок
+    private static final long FAST_REPETITION_THRESHOLD = 150; // в мс, если нота повторяется быстрее – считаем, что это один тон
+    private static final long MIN_NOTE_DURATION = 50; // минимальная длительность ноты
+    private static final double RMS_THRESHOLD = 0.05; // порог RMS для детекции наличия звука
+    private static final double MAX_RELATIVE_ERROR = 0.05; // 5% погрешности при сравнении с эталоном
 
     private boolean isRecording = false;
     private Handler handler = new Handler();
@@ -60,7 +59,7 @@ public class MusicRecorderFragment extends Fragment {
     private AudioRecord audioRecord;
     private WebView webView; // WebView для отображения нот через VexFlow
 
-    // Настройки тональности и такта
+    // Параметры настроек (тональность, такт)
     private Spinner keySpinner, meterSpinner;
     private String selectedKey = "C";
     private String selectedMeter = "4/4";
@@ -68,39 +67,13 @@ public class MusicRecorderFragment extends Fragment {
     // Переменные для определения длительности ноты
     private String lastRecordedNote = "";
     private long lastNoteStartTime = 0;
-    // Флаг, фиксирующий окончание ноты
+    // Флаг для фиксации окончания звучания ноты
     private boolean noteEnded = false;
-    // Последняя зафиксированная частота для сравнения
-    private double lastDetectedFreq = -1;
 
-    // Буфер для сглаживания (медианный фильтр) – размер 5 измерений
-    private static final int PITCH_BUFFER_SIZE = 5;
-    private double[] pitchBuffer = new double[PITCH_BUFFER_SIZE];
-    private int pitchBufferIndex = 0;
-    private boolean bufferFilled = false;
-
-    // Основной метод анализа аудио – использует оптимизированный алгоритм YIN
+    // Анализ аудио методом YIN
     private double analyzePitch(double[] audioData) {
-        return OptimizedYIN.getPitch(audioData, SAMPLE_RATE);
-    }
-
-    // Метод сглаживания – возвращает медианное значение из буфера
-    private double getSmoothedPitch(double[] audioData) {
-        double currentPitch = analyzePitch(audioData);
-        if (currentPitch <= 0) {
-            return -1;
-        }
-        pitchBuffer[pitchBufferIndex] = currentPitch;
-        pitchBufferIndex = (pitchBufferIndex + 1) % PITCH_BUFFER_SIZE;
-        if (pitchBufferIndex == 0) {
-            bufferFilled = true;
-        }
-        if (!bufferFilled) {
-            return currentPitch;
-        }
-        double[] copy = Arrays.copyOf(pitchBuffer, pitchBuffer.length);
-        Arrays.sort(copy);
-        return copy[copy.length / 2];
+        YINPitchDetector yinDetector = new YINPitchDetector();
+        return yinDetector.getPitch(audioData, SAMPLE_RATE);
     }
 
     // Преобразование частоты в название ноты
@@ -139,6 +112,38 @@ public class MusicRecorderFragment extends Fragment {
         return noteNames[closestIndex];
     }
 
+    // Получаем эталонную частоту для заданной ноты
+    private double getStandardFrequency(String note) {
+        double[] noteFrequencies = {
+                32.70, 34.65, 36.71, 38.89, 41.20, 43.65, 46.25, 49.00, 51.91, 55.00, 58.27, 61.74,
+                65.41, 69.30, 73.42, 77.78, 82.41, 87.31, 92.50, 98.00, 103.83, 110.00, 116.54, 123.47,
+                130.81, 138.59, 146.83, 155.56, 164.81, 174.61, 185.00, 196.00, 207.65, 220.00, 233.08, 246.94,
+                261.63, 277.18, 293.66, 311.13, 329.63, 349.23, 369.99, 392.00, 415.30, 440.00, 466.16, 493.88,
+                523.25, 554.37, 587.33, 622.25, 659.26, 698.46, 739.99, 783.99, 830.61, 880.00, 932.33, 987.77,
+                1046.50, 1108.73, 1174.66, 1244.51, 1318.51, 1396.91, 1479.98, 1567.98, 1661.22, 1760.00, 1864.66, 1975.53,
+                2093.00, 2217.46, 2349.32, 2489.02, 2637.02, 2793.83, 2959.96, 3135.96, 3322.44, 3520.00, 3729.31, 3951.07,
+                4186.01
+        };
+
+        String[] noteNames = {
+                "C1", "C#1", "D1", "D#1", "E1", "F1", "F#1", "G1", "G#1", "A1", "A#1", "B1",
+                "C2", "C#2", "D2", "D#2", "E2", "F2", "F#2", "G2", "G#2", "A2", "A#2", "B2",
+                "C3", "C#3", "D3", "D#3", "E3", "F3", "F#3", "G3", "G#3", "A3", "A#3", "B3",
+                "C4", "C#4", "D4", "D#4", "E4", "F4", "F#4", "G4", "G#4", "A4", "A#4", "B4",
+                "C5", "C#5", "D5", "D#5", "E5", "F5", "F#5", "G5", "G#5", "A5", "A#5", "B5",
+                "C6", "C#6", "D6", "D#6", "E6", "F6", "F#6", "G6", "G#6", "A6", "A#6", "B6",
+                "C7", "C#7", "D7", "D#7", "E7", "F7", "F#7", "G7", "G#7", "A7", "A#7", "B7",
+                "C8"
+        };
+
+        for (int i = 0; i < noteNames.length; i++) {
+            if (noteNames[i].equals(note)) {
+                return noteFrequencies[i];
+            }
+        }
+        return -1;
+    }
+
     // Захват аудио с микрофона
     private double[] captureAudio() {
         short[] buffer = new short[AUDIO_BUFFER_SIZE];
@@ -168,7 +173,7 @@ public class MusicRecorderFragment extends Fragment {
         }
     }
 
-    // Основной цикл обработки аудио
+    // Обработка аудио каждые 50 мс с дополнительными проверками
     private final Runnable processAudio = new Runnable() {
         @Override
         public void run() {
@@ -179,57 +184,79 @@ public class MusicRecorderFragment extends Fragment {
                 for (double sample : audioData) {
                     rms += sample * sample;
                 }
-                rms = Math.sqrt(rms / audioData.length);
+                rms = Math.sqrt(rms / (audioData.length > 0 ? audioData.length : 1));
+
                 long currentTime = System.currentTimeMillis();
 
-                // Если звук слишком тихий – фиксируем длительность предыдущей ноты и сбрасываем состояние
-                if (rms < 0.05) {
+                // Если амплитуда слишком мала, считаем, что нота закончилась
+                if (rms < RMS_THRESHOLD) {
                     if (!lastRecordedNote.isEmpty()) {
                         long durationMs = currentTime - lastNoteStartTime;
-                        String durationSymbol = getDurationSymbol(durationMs);
-                        String jsCommand = "javascript:updateDisplayWithDuration('"
-                                + selectedKey + "', '" + selectedMeter + "', '"
-                                + lastRecordedNote + "', '" + durationSymbol + "')";
-                        webView.evaluateJavascript(jsCommand, null);
-                        lastRecordedNote = "";
-                        lastDetectedFreq = -1;
-                    }
-                    handler.postDelayed(this, PROCESS_DELAY_MS);
-                    return;
-                }
-
-                // Получаем сглаженное значение частоты
-                double detectedFreq = getSmoothedPitch(audioData);
-                Log.d(TAG, "Detected frequency: " + detectedFreq + " Hz, RMS: " + rms);
-                if (detectedFreq != -1) {
-                    // Если предыдущая частота не установлена, сохраняем текущее значение
-                    if (lastDetectedFreq < 0) {
-                        lastDetectedFreq = detectedFreq;
-                    }
-                    // Вычисляем относительную разницу между текущей и предыдущей частотой
-                    double relativeDiff = Math.abs(detectedFreq - lastDetectedFreq) / lastDetectedFreq;
-
-                    String detectedNote = mapFrequencyToNote(detectedFreq);
-
-                    // Если разница превышает порог и прошло минимум MIN_NOTE_DURATION_MS, фиксируем предыдущую ноту
-                    if (relativeDiff > FREQUENCY_TOLERANCE && (currentTime - lastNoteStartTime) >= MIN_NOTE_DURATION_MS) {
-                        if (!lastRecordedNote.isEmpty()) {
-                            long durationMs = currentTime - lastNoteStartTime;
+                        // Если длительность слишком мала – игнорируем (возможно, это быстрый повтор)
+                        if (durationMs >= MIN_NOTE_DURATION) {
                             String durationSymbol = getDurationSymbol(durationMs);
                             String jsCommand = "javascript:updateDisplayWithDuration('"
                                     + selectedKey + "', '" + selectedMeter + "', '"
                                     + lastRecordedNote + "', '" + durationSymbol + "')";
                             webView.evaluateJavascript(jsCommand, null);
                         }
-                        lastRecordedNote = detectedNote;
-                        lastNoteStartTime = currentTime;
-                        lastDetectedFreq = detectedFreq;
-                    } else {
-                        // Если та же нота, обновляем длительность без создания нового события
-                        // (можно реализовать дополнительную логику для длительных нот, если потребуется)
+                        lastRecordedNote = "";
+                    }
+                    noteEnded = true;
+                    handler.postDelayed(this, 50);
+                    return;
+                }
+
+                double detectedFreq = analyzePitch(audioData);
+                Log.d(TAG, "Detected frequency: " + detectedFreq + " Hz, RMS: " + rms);
+
+                // Если не удалось определить частоту, пропускаем итерацию
+                if (detectedFreq == -1) {
+                    handler.postDelayed(this, 50);
+                    return;
+                }
+
+                String detectedNote = mapFrequencyToNote(detectedFreq);
+                double standardFreq = getStandardFrequency(detectedNote);
+                // Проверка правильности исполнения: если относительная погрешность превышает MAX_RELATIVE_ERROR – игнорируем
+                if (standardFreq > 0) {
+                    double relativeError = Math.abs(detectedFreq - standardFreq) / standardFreq;
+                    if (relativeError > MAX_RELATIVE_ERROR) {
+                        Log.d(TAG, "Detected note " + detectedNote + " has high error (" + relativeError + "), ignoring.");
+                        handler.postDelayed(this, 50);
+                        return;
                     }
                 }
-                handler.postDelayed(this, PROCESS_DELAY_MS);
+
+                // Если нота не изменилась, но время от начала меньше порога быстрых повторов – просто продолжаем
+                if (!lastRecordedNote.isEmpty() && detectedNote.equals(lastRecordedNote)) {
+                    long heldDuration = currentTime - lastNoteStartTime;
+                    if (heldDuration < FAST_REPETITION_THRESHOLD) {
+                        handler.postDelayed(this, 50);
+                        return;
+                    }
+                }
+
+                // Фиксируем окончание предыдущей ноты (если была) и начинаем новую
+                if (lastRecordedNote.isEmpty() || noteEnded ||
+                        (!detectedNote.equals(lastRecordedNote) && (currentTime - lastNoteStartTime) >= MIN_NOTE_DURATION)) {
+                    long durationMs = currentTime - lastNoteStartTime;
+                    // Если предыдущая нота была зажата очень коротко, возможно это быстрый повтор – в таком случае объединяем длительность
+                    if (!lastRecordedNote.isEmpty() && detectedNote.equals(lastRecordedNote)
+                            && durationMs < FAST_REPETITION_THRESHOLD) {
+                        // Не обновляем, продолжаем зажатие
+                    } else {
+                        String durationSymbol = getDurationSymbol(durationMs);
+                        String jsCommand = "javascript:updateDisplayWithDuration('"
+                                + selectedKey + "', '" + selectedMeter + "', '"
+                                + lastRecordedNote + "', '" + durationSymbol + "')";
+                        webView.evaluateJavascript(jsCommand, null);
+                        lastRecordedNote = detectedNote;
+                        lastNoteStartTime = currentTime;
+                        noteEnded = false;
+                    }
+                }
+                handler.postDelayed(this, 50);
             }
         }
     };
@@ -247,9 +274,6 @@ public class MusicRecorderFragment extends Fragment {
                 isRecording = true;
                 lastRecordedNote = "";
                 lastNoteStartTime = System.currentTimeMillis();
-                lastDetectedFreq = -1;
-                pitchBufferIndex = 0;
-                bufferFilled = false;
                 handler.post(processAudio);
                 Log.d(TAG, "Recording started");
                 Toast.makeText(getActivity(), "Recording started", Toast.LENGTH_SHORT).show();
@@ -263,7 +287,7 @@ public class MusicRecorderFragment extends Fragment {
         }
     }
 
-    // Остановка записи аудио. Если нота всё ещё звучала – фиксируем её длительность.
+    // Остановка записи. Если нота всё ещё звучала – фиксируем её длительность.
     private void stopRecording() {
         if (isRecording && audioRecord != null) {
             isRecording = false;
@@ -276,7 +300,6 @@ public class MusicRecorderFragment extends Fragment {
                         + lastRecordedNote + "', '" + durationSymbol + "')";
                 webView.evaluateJavascript(jsCommand, null);
                 lastRecordedNote = "";
-                lastDetectedFreq = -1;
             }
             try {
                 audioRecord.stop();
@@ -316,7 +339,7 @@ public class MusicRecorderFragment extends Fragment {
         builder.show();
     }
 
-    // Генерация PDF и сохранение изображения, затем создание записи проекта.
+    // Генерация PDF и сохранение изображения, затем создание записи проекта
     private void saveProject(String projectName) {
         Bitmap bitmap = captureWebViewBitmap();
         if (bitmap == null) {
@@ -425,7 +448,6 @@ public class MusicRecorderFragment extends Fragment {
         }
     }
 
-    // Основной метод onCreateView для этого фрагмента
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View rootView = inflater.inflate(R.layout.fragment_music_recorder, container, false);
@@ -437,6 +459,8 @@ public class MusicRecorderFragment extends Fragment {
 
         // Принудительно используем программный рендеринг для WebView
         webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+
+        // Настройка WebView
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setAllowFileAccess(true);
@@ -453,6 +477,7 @@ public class MusicRecorderFragment extends Fragment {
         });
         webView.loadUrl("file:///android_asset/music_display.html");
 
+        // Настройка спиннера тональности
         ArrayAdapter<CharSequence> keyAdapter = ArrayAdapter.createFromResource(getActivity(),
                 R.array.keys, android.R.layout.simple_spinner_item);
         keyAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
@@ -468,6 +493,7 @@ public class MusicRecorderFragment extends Fragment {
             public void onNothingSelected(AdapterView<?> parent) { }
         });
 
+        // Настройка спиннера такта
         ArrayAdapter<CharSequence> meterAdapter = ArrayAdapter.createFromResource(getActivity(),
                 R.array.meters, android.R.layout.simple_spinner_item);
         meterAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
@@ -483,6 +509,7 @@ public class MusicRecorderFragment extends Fragment {
             public void onNothingSelected(AdapterView<?> parent) { }
         });
 
+        // Обработка нажатия кнопки "Запись"
         startButton.setOnClickListener(v -> {
             new AlertDialog.Builder(getActivity())
                     .setTitle("Start Recording")
@@ -499,32 +526,23 @@ public class MusicRecorderFragment extends Fragment {
                     .show();
         });
 
+        // Обработка нажатия кнопки "Стоп"
         stopButton.setOnClickListener(v -> stopRecording());
 
         return rootView;
     }
 
-    // Оптимизированный алгоритм YIN для определения частоты
-    public static class OptimizedYIN {
+    // Класс для определения высоты тона методом YIN
+    public static class YINPitchDetector {
+        // Порог уменьшен для быстрого распознавания
         private static final double THRESHOLD = 0.12;
-        // Ограничения tau для диапазона частот пианино
-        private static int tauMin(int sampleRate) {
-            return Math.max(2, sampleRate / 4200);  // примерно 10 при 44100 Гц
-        }
-        private static int tauMax(int sampleRate, int bufferSize) {
-            int max = sampleRate / 25;  // примерно 1764 при 44100 Гц
-            return Math.min(bufferSize / 2, max);
-        }
 
-        public static double getPitch(double[] buffer, int sampleRate) {
+        public double getPitch(double[] buffer, int sampleRate) {
             int bufferSize = buffer.length;
-            int tauMin = tauMin(sampleRate);
-            int tauMax = tauMax(sampleRate, bufferSize);
-            double[] difference = new double[tauMax + 1];
-            double[] cmnd = new double[tauMax + 1];
+            int tauMax = bufferSize / 2;
+            double[] difference = new double[tauMax];
 
-            // Вычисляем разности
-            for (int tau = tauMin; tau <= tauMax; tau++) {
+            for (int tau = 0; tau < tauMax; tau++) {
                 double sum = 0;
                 for (int j = 0; j < bufferSize - tau; j++) {
                     double delta = buffer[j] - buffer[j + tau];
@@ -533,28 +551,31 @@ public class MusicRecorderFragment extends Fragment {
                 difference[tau] = sum;
             }
 
+            double[] cmnd = new double[tauMax];
             cmnd[0] = 1;
             double runningSum = 0;
-            for (int tau = tauMin; tau <= tauMax; tau++) {
+            for (int tau = 1; tau < tauMax; tau++) {
                 runningSum += difference[tau];
                 cmnd[tau] = difference[tau] * tau / runningSum;
             }
 
             int tauEstimate = -1;
-            for (int tau = tauMin; tau <= tauMax; tau++) {
+            for (int tau = 1; tau < tauMax; tau++) {
                 if (cmnd[tau] < THRESHOLD) {
-                    while (tau + 1 <= tauMax && cmnd[tau + 1] < cmnd[tau]) {
+                    while (tau + 1 < tauMax && cmnd[tau + 1] < cmnd[tau]) {
                         tau++;
                     }
                     tauEstimate = tau;
                     break;
                 }
             }
+
             if (tauEstimate == -1) {
                 return -1;
             }
-            int tau0 = Math.max(tauMin, tauEstimate - 1);
-            int tau2 = Math.min(tauMax, tauEstimate + 1);
+
+            int tau0 = (tauEstimate <= 1) ? tauEstimate : tauEstimate - 1;
+            int tau2 = (tauEstimate + 1 < tauMax) ? tauEstimate + 1 : tauEstimate;
             double s0 = cmnd[tau0];
             double s1 = cmnd[tauEstimate];
             double s2 = cmnd[tau2];

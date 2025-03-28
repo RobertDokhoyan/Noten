@@ -45,6 +45,11 @@ dependencies {
     implementation ("com.github.wendykierp:JTransforms:3.1")
     implementation(libs.litert.support.api)
     annotationProcessor("com.github.bumptech.glide:compiler:4.15.1")
+    implementation("com.github.wendykierp:JTransforms:3.1")
+    implementation (libs.commons.math3)
+    implementation ("org.apache.commons:commons-math3:3.6.1")
+
+
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
