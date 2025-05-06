@@ -12,8 +12,10 @@ import android.provider.MediaStore;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.AnimationUtils;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.Toast;
 
@@ -30,6 +32,7 @@ public class MyProjectsFragment extends Fragment {
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        // Инфлейтим layout для фрагмента
         View rootView = inflater.inflate(R.layout.fragment_my_projects, container, false);
         listViewProjects = rootView.findViewById(R.id.listViewProjects);
         return rootView;
@@ -37,10 +40,18 @@ public class MyProjectsFragment extends Fragment {
 
     @Override
     public void onViewCreated(View view, Bundle savedInstanceState) {
+        // Запускаем анимацию для sparkleView
+        ImageView sparkleView = view.findViewById(R.id.header_title);
+        if (sparkleView != null) {
+            sparkleView.startAnimation(AnimationUtils.loadAnimation(getContext(), R.anim.sparkle_animation));
+        }
+
+        // Загружаем список проектов и устанавливаем адаптер
         List<Project> projects = ProjectManager.getProjects();
         ArrayAdapter<Project> adapter = new ArrayAdapter<>(getActivity(), android.R.layout.simple_list_item_1, projects);
         listViewProjects.setAdapter(adapter);
 
+        // Обрабатываем нажатие на элемент списка для сохранения изображения в галерею
         listViewProjects.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View item, int position, long id) {
@@ -50,7 +61,7 @@ public class MyProjectsFragment extends Fragment {
         });
     }
 
-    // Диалог с предложением сохранить изображение в галерею
+    // Диалог с предложением сохранить изображение проекта в галерею
     private void showSaveToGalleryDialog(Project project) {
         AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
         builder.setTitle("Save to Gallery");
@@ -58,7 +69,6 @@ public class MyProjectsFragment extends Fragment {
         builder.setPositiveButton("Save", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
-
                 saveProjectImageToGallery(project);
             }
         });

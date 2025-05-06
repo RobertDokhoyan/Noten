@@ -1,9 +1,9 @@
 package com.example.noten;
-public class FFT {
+public class FFT1 {
     private int n, m, bitmasks[];
     private double[] cos, sin, window;
 
-    public FFT(int n) {
+    public FFT1(int n) {
         this.n = n;
         this.m = (int) (Math.log(n) / Math.log(2));
         this.bitmasks = new int[n];

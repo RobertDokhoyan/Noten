@@ -9,6 +9,9 @@ pluginManagement {
         }
         mavenCentral()
         gradlePluginPortal()
+        maven (
+            url = "https://mvn.0110.be/releases"
+        )
     }
 }
 dependencyResolutionManagement {
@@ -17,6 +20,9 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         jcenter()
+        maven (
+            url = "https://mvn.0110.be/releases"
+        )
     }
 }
 
