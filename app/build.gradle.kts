@@ -43,9 +43,6 @@ dependencies {
     implementation("com.google.firebase:firebase-storage") // Firebase Storage
     implementation("com.github.bumptech.glide:glide:4.15.1")
     implementation ("com.github.wendykierp:JTransforms:3.1")
-//    implementation ("be.tarsos.dsp:TarsosDSP.core:2.5")
-//    implementation ("be.tarsos.dsp:TarsosDSP.jvm:2.5")
-    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("TarsosDSPAndroid-v3.jar"))))
     implementation(libs.litert.support.api)
     annotationProcessor("com.github.bumptech.glide:compiler:4.15.1")
 

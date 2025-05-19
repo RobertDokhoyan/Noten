@@ -1,6 +1,5 @@
 package com.example.noten;
 
-
 import android.Manifest;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
@@ -39,17 +38,11 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 
-import be.hogent.tarsos.dsp.AudioEvent;
-import be.hogent.tarsos.dsp.AudioProcessor;
-import be.hogent.tarsos.dsp.MicrophoneAudioDispatcher;
-import be.hogent.tarsos.dsp.util.fft.FFT;
-
-
 public class MusicRecorderFragment extends Fragment {
 
     private static final String TAG = "MusicRecorderFragment";
     private static final int PERMISSION_REQUEST_CODE = 1001;
-//    private static final int SAMPLE_RATE = 44100;
+    private static final int SAMPLE_RATE = 44100;
     // Буфер для быстрого отклика
     private static final int AUDIO_BUFFER_SIZE = 4096;
     // Порог по RMS для определения наличия звука
@@ -167,7 +160,7 @@ public class MusicRecorderFragment extends Fragment {
      * Логика:
      * - Если уровень сигнала выше порога, начинается или продолжается событие ноты.
      * - Если сигнал ниже порога, начинается отслеживание тишины.
-     * Если тишина длится дольше SILENCE_GRACE_PERIOD, событие завершается – отправляется один финальный сигнал.
+     *   Если тишина длится дольше SILENCE_GRACE_PERIOD, событие завершается – отправляется один финальный сигнал.
      * - Если обнаруживается изменение ноты, предыдущее событие завершается, и начинается новое.
      */
     private final Runnable processAudio = new Runnable() {
@@ -186,7 +179,6 @@ public class MusicRecorderFragment extends Fragment {
             rms = Math.sqrt(rms / audioData.length);
 
             if (rms < RMS_THRESHOLD) {
-                System.out.println("rms = " + rms);
                 // Если сигнал ниже порога и нота активна — начинаем отслеживать грайс-период
                 if (currentStableNote != null) {
                     if (silenceStartTime == 0) {
@@ -205,17 +197,14 @@ public class MusicRecorderFragment extends Fragment {
                     }
                 }
             } else {
-                System.out.println("rms1 = " + rms);
                 // Сигнал выше порога – сбрасываем время тишины
                 silenceStartTime = 0;
                 double detectedFreq = analyzePitch(audioData);
                 if (detectedFreq != -1) {
-                    System.out.println("rms detectedFreq = " + detectedFreq);
                     String detectedNote = mapFrequencyToNote(detectedFreq);
                     // Проверка точности: если разница более 5% – измерение игнорируется
                     double expectedFreq = getExpectedFrequencyForNote(detectedNote);
                     if (expectedFreq > 0 && Math.abs(detectedFreq - expectedFreq) > expectedFreq * 0.05) {
-                        System.out.println("rms expectedFreq = " + expectedFreq);
                         Log.d(TAG, "Frequency accuracy check failed for note " + detectedNote +
                                 ". Detected: " + detectedFreq + " Hz, Expected: " + expectedFreq + " Hz");
                         handler.postDelayed(this, 50);
@@ -223,17 +212,14 @@ public class MusicRecorderFragment extends Fragment {
                     }
                     // Если нота не активна, начинаем новое событие
                     if (currentStableNote == null) {
-                        System.out.println("rms currentStableNote = " + currentStableNote);
                         // Если предыдущая нота завершилась совсем недавно (менее 100 мс) – можно обрабатывать повторное нажатие отдельно
                         if (currentTime - lastNoteEndTime < 100) {
-                            System.out.println("rms currentTime - lastNoteEndTime = " + (currentTime - lastNoteEndTime));
                             // Дополнительная логика для объединения повторных нажатий при необходимости
                         }
                         currentStableNote = detectedNote;
                         noteStartTime = currentTime;
                         Log.d(TAG, "Started new note: " + currentStableNote);
                     } else if (!detectedNote.equals(currentStableNote)) {
-                        System.out.println("rms !currentStableNote = " + currentStableNote);
                         // Если нота изменилась, завершаем предыдущее событие и начинаем новое
                         long durationMs = currentTime - noteStartTime;
                         String durationSymbol = getDurationSymbol(durationMs);
@@ -434,7 +420,7 @@ public class MusicRecorderFragment extends Fragment {
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 &&
                     grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startFFTDetector();
+                startRecording();
             } else {
                 Toast.makeText(getActivity(), "No permission to record audio", Toast.LENGTH_SHORT).show();
             }
@@ -482,10 +468,8 @@ public class MusicRecorderFragment extends Fragment {
                 Log.d(TAG, "Selected key: " + selectedKey);
                 webView.evaluateJavascript("javascript:updateDisplayWithDuration('" + selectedKey + "', '" + selectedMeter + "', '', '')", null);
             }
-
             @Override
-            public void onNothingSelected(AdapterView<?> parent) {
-            }
+            public void onNothingSelected(AdapterView<?> parent) { }
         });
 
         // Настройка спиннера такта
@@ -500,10 +484,8 @@ public class MusicRecorderFragment extends Fragment {
                 Log.d(TAG, "Selected meter: " + selectedMeter);
                 webView.evaluateJavascript("javascript:updateDisplayWithDuration('" + selectedKey + "', '" + selectedMeter + "', '', '')", null);
             }
-
             @Override
-            public void onNothingSelected(AdapterView<?> parent) {
-            }
+            public void onNothingSelected(AdapterView<?> parent) { }
         });
 
         // Обработка нажатия кнопки "Запись"
@@ -514,7 +496,7 @@ public class MusicRecorderFragment extends Fragment {
                     .setPositiveButton("Yes", (dialog, which) -> {
                         webView.evaluateJavascript("javascript:resetStaff('" + selectedKey + "', '" + selectedMeter + "')", null);
                         if (checkPermissions()) {
-                            startFFTDetector();
+                            startRecording();
                         } else {
                             requestPermissions();
                         }
@@ -581,103 +563,7 @@ public class MusicRecorderFragment extends Fragment {
             if (denominator != 0) {
                 betterTau = tauEstimate + (s2 - s0) / (2 * denominator);
             }
-            System.out.println("sampleRate / betterTau = " + sampleRate / betterTau);
             return sampleRate / betterTau;
         }
-    }
-
-    private static final int SAMPLE_RATE = 44100;
-    private static final int BUFFER_SIZE = 4096;
-    private static final int OVERLAP = 1024;
-    private static final float MAG_THRESHOLD = 20f; // adjust based on sensitivity
-
-    private void startFFTDetector() {
-        MicrophoneAudioDispatcher dispatcher = new MicrophoneAudioDispatcher(SAMPLE_RATE, BUFFER_SIZE, OVERLAP);
-
-        FFT fft = new FFT(BUFFER_SIZE);
-        float[] amplitudes = new float[BUFFER_SIZE / 2];
-
-        dispatcher.addAudioProcessor(new AudioProcessor() {
-            @Override
-            public boolean process(AudioEvent audioEvent) {
-                System.out.println("audioEvent = " + audioEvent.));
-                long currentTime = System.currentTimeMillis();
-                float[] audioBuffer = audioEvent.getFloatBuffer();
-                float[] transformBuffer = new float[BUFFER_SIZE * 2]; // Real + Imaginary
-
-                System.arraycopy(audioBuffer, 0, transformBuffer, 0, audioBuffer.length);
-                fft.forwardTransform(transformBuffer);
-                System.out.println("transformBuffer.length = " + transformBuffer.length);
-                System.out.println("transformBuffer.length = " + amplitudes.length);
-//                assert transformBuffer.length / 2 == amplitudes.length;
-//                fft.modulus(transformBuffer, amplitudes);
-                for(int i = 0; i < amplitudes.length; ++i) {
-                    amplitudes[i] = fft.modulus(transformBuffer, i);
-                }
-                for (int i = 0; i < amplitudes.length; i++) {
-                    if (amplitudes[i] > MAG_THRESHOLD) {
-                        float detectedFreq = (float) (i * SAMPLE_RATE) / BUFFER_SIZE;
-                        String detectedNote = mapFrequencyToNote(detectedFreq);
-                        double expectedFreq = getExpectedFrequencyForNote(detectedNote);
-                        System.out.println("expectedFreq = " + expectedFreq);
-                        if (expectedFreq > 0 && Math.abs(detectedFreq - expectedFreq) > expectedFreq * 0.05) {
-                            System.out.println("rms expectedFreq = " + expectedFreq);
-                            Log.d(TAG, "Frequency accuracy check failed for note " + detectedNote +
-                                    ". Detected: " + detectedFreq + " Hz, Expected: " + expectedFreq + " Hz");
-//                            handler.postDelayed(this, 50);
-//                            return true;
-                        }
-                        // Если нота не активна, начинаем новое событие
-                        if (currentStableNote == null) {
-                            System.out.println("rms currentStableNote = " + currentStableNote);
-                            // Если предыдущая нота завершилась совсем недавно (менее 100 мс) – можно обрабатывать повторное нажатие отдельно
-                            if (currentTime - lastNoteEndTime < 100) {
-                                System.out.println("rms currentTime - lastNoteEndTime = " + (currentTime - lastNoteEndTime));
-                                // Дополнительная логика для объединения повторных нажатий при необходимости
-                            }
-                            currentStableNote = detectedNote;
-                            noteStartTime = currentTime;
-                            Log.d(TAG, "Started new note: " + currentStableNote);
-                        } else if (!detectedNote.equals(currentStableNote)) {
-                            System.out.println("rms !currentStableNote = " + currentStableNote);
-                            // Если нота изменилась, завершаем предыдущее событие и начинаем новое
-                            long durationMs = currentTime - noteStartTime;
-                            String durationSymbol = getDurationSymbol(durationMs);
-                            String jsCommand = "javascript:updateDisplayWithDuration('"
-                                    + selectedKey + "', '" + selectedMeter + "', '"
-                                    + currentStableNote + "', '" + durationSymbol + "')";
-                            webView.evaluateJavascript(jsCommand, null);
-                            Log.d(TAG, "Note changed. Finalized note " + currentStableNote + " with duration " + durationMs + " ms");
-                            currentStableNote = detectedNote;
-                            noteStartTime = currentTime;
-                            Log.d(TAG, "Started new note: " + currentStableNote);
-                        }
-                        // Если нота остаётся неизменной, не отправляем промежуточных обновлений
-                    }
-
-
-                }
-                return true;
-            }
-
-            @Override
-            public void processingFinished() {
-                System.out.println("amplitudes = " + amplitudes);
-            }
-        });
-
-        new Thread(dispatcher, "Audio Dispatcher").start();
-    }
-
-    private String frequencyToNote(float freq) {
-        // Convert frequency to nearest piano note
-        if (freq <= 0) return "";
-        final String[] notes = {
-                "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
-        };
-        int midiNote = (int) Math.round(69 + 12 * Math.log(freq / 440.0) / Math.log(2));
-        int octave = (midiNote / 12) - 1;
-        String note = notes[midiNote % 12];
-        return note + octave;
     }
 }
