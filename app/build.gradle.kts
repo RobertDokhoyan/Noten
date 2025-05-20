@@ -44,6 +44,7 @@ dependencies {
     implementation("com.github.bumptech.glide:glide:4.15.1")
     implementation ("com.github.wendykierp:JTransforms:3.1")
     implementation(libs.litert.support.api)
+    implementation(libs.firebase.firestore)
     annotationProcessor("com.github.bumptech.glide:compiler:4.15.1")
 
     testImplementation(libs.junit)
